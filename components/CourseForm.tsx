@@ -66,12 +66,31 @@ export function CourseForm({ courseId }: CourseFormProps) {
           
           // 배열이고 유효한 좌표인지 확인
           if (Array.isArray(pathData) && pathData.length > 0) {
-            setPath(pathData);
+            // 각 좌표의 유효성 검사
+            const validPath = pathData.filter((point: any) => {
+              return point && 
+                     typeof point === 'object' &&
+                     typeof point.lat === 'number' && 
+                     typeof point.lng === 'number' &&
+                     !isNaN(point.lat) && 
+                     !isNaN(point.lng);
+            });
+            
+            if (validPath.length > 0) {
+              setPath(validPath);
+            } else {
+              console.warn('No valid coordinates found in path_data');
+              setPath([]);
+            }
+          } else {
+            setPath([]);
           }
         } catch (parseError) {
           console.error('Failed to parse path_data:', parseError);
           setPath([]);
         }
+      } else {
+        setPath([]);
       }
     } catch (error) {
       console.error('Failed to fetch course:', error);

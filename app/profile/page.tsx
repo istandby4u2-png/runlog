@@ -2,6 +2,9 @@ import { redirect } from 'next/navigation';
 import { verifyToken, getUserFromRequest } from '@/lib/auth';
 import { LogoutButton } from '@/components/LogoutButton';
 
+// 이 페이지는 동적이므로 정적 생성 비활성화
+export const dynamic = 'force-dynamic';
+
 export default async function ProfilePage() {
   const user = await getUserFromRequest();
 

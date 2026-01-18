@@ -96,7 +96,7 @@ export async function PUT(
         await deleteImage(imageUrl);
       }
       
-      imageUrl = await uploadImage(imageFile, 'runlog/records');
+      imageUrl = await uploadImage(imageFile, 'records');
     }
 
     await runningRecords.update(recordId, {

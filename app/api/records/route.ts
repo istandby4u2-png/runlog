@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
 
     let imageUrl = null;
     if (imageFile && imageFile.size > 0) {
-      imageUrl = await uploadImage(imageFile, 'runlog/records');
+      imageUrl = await uploadImage(imageFile, 'records');
     }
 
     const record = await runningRecords.create({

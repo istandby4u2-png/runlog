@@ -27,7 +27,8 @@ export function InstagramShare({ record }: InstagramShareProps) {
       }
 
       // 이미지가 있으면 배경으로 사용, 없으면 그라데이션 배경
-      if (record.image_url) {
+      const imageUrl = record.image_url;
+      if (imageUrl) {
         const bgImg = new Image();
         bgImg.crossOrigin = 'anonymous';
         
@@ -74,7 +75,7 @@ export function InstagramShare({ record }: InstagramShareProps) {
             ctx.fillRect(0, 0, 1080, 1080);
             resolve(null);
           };
-          bgImg.src = record.image_url;
+          bgImg.src = imageUrl;
         });
       } else {
         // 이미지가 없으면 그라데이션 배경

@@ -42,35 +42,50 @@ export function CourseForm({ courseId }: CourseFormProps) {
   });
 
   // 수정 모드일 때 코스 데이터 로드
-  useEffect(() => {
-    if (isEditMode && courseId) {
-      fetchCourse();
-    }
-  }, [isEditMode, courseId]);
-
-  const fetchCourse = async () => {
+  const fetchCourse = useCallback(async () => {
     if (!courseId) return;
     
     try {
       const response = await fetch(`/api/courses/${courseId}`);
       if (!response.ok) {
-        throw new Error('코스를 불러올 수 없습니다.');
+        throw new Error('Failed to load course');
       }
       const course = await response.json();
       
-      setTitle(course.title);
+      setTitle(course.title || '');
       setDescription(course.description || '');
-      setExistingImageUrl(course.image_url);
+      setExistingImageUrl(course.image_url || null);
+      
+      // path_data 파싱 (안전하게 처리)
       if (course.path_data) {
-        setPath(JSON.parse(course.path_data));
+        try {
+          // 이미 객체인 경우와 문자열인 경우 모두 처리
+          const pathData = typeof course.path_data === 'string' 
+            ? JSON.parse(course.path_data) 
+            : course.path_data;
+          
+          // 배열이고 유효한 좌표인지 확인
+          if (Array.isArray(pathData) && pathData.length > 0) {
+            setPath(pathData);
+          }
+        } catch (parseError) {
+          console.error('Failed to parse path_data:', parseError);
+          setPath([]);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch course:', error);
-      setError('코스를 불러올 수 없습니다.');
+      setError('Failed to load course. Please try again.');
     } finally {
       setLoadingCourse(false);
     }
-  };
+  }, [courseId]);
+
+  useEffect(() => {
+    if (isEditMode && courseId) {
+      fetchCourse();
+    }
+  }, [isEditMode, courseId, fetchCourse]);
 
   const onLoad = useCallback((map: google.maps.Map) => {
     // 맵 로드 완료

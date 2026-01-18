@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { GoogleMap, useJsApiLoader, DrawingManager, Polygon } from '@react-google-maps/api';
 import { LatLng } from '@/types';
@@ -17,14 +17,22 @@ const defaultCenter = {
   lng: 126.9780
 };
 
-export function CourseForm() {
+interface CourseFormProps {
+  courseId?: number;
+}
+
+export function CourseForm({ courseId }: CourseFormProps) {
   const router = useRouter();
+  const isEditMode = !!courseId;
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [image, setImage] = useState<File | null>(null);
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
+  const [removeImage, setRemoveImage] = useState(false);
   const [path, setPath] = useState<LatLng[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingCourse, setLoadingCourse] = useState(isEditMode);
   const polygonRef = useRef<google.maps.Polygon | null>(null);
 
   const { isLoaded } = useJsApiLoader({
@@ -32,6 +40,37 @@ export function CourseForm() {
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
     libraries
   });
+
+  // 수정 모드일 때 코스 데이터 로드
+  useEffect(() => {
+    if (isEditMode && courseId) {
+      fetchCourse();
+    }
+  }, [isEditMode, courseId]);
+
+  const fetchCourse = async () => {
+    if (!courseId) return;
+    
+    try {
+      const response = await fetch(`/api/courses/${courseId}`);
+      if (!response.ok) {
+        throw new Error('코스를 불러올 수 없습니다.');
+      }
+      const course = await response.json();
+      
+      setTitle(course.title);
+      setDescription(course.description || '');
+      setExistingImageUrl(course.image_url);
+      if (course.path_data) {
+        setPath(JSON.parse(course.path_data));
+      }
+    } catch (error) {
+      console.error('Failed to fetch course:', error);
+      setError('코스를 불러올 수 없습니다.');
+    } finally {
+      setLoadingCourse(false);
+    }
+  };
 
   const onLoad = useCallback((map: google.maps.Map) => {
     // 맵 로드 완료
@@ -110,9 +149,15 @@ export function CourseForm() {
       if (image) {
         formData.append('image', image);
       }
+      if (removeImage) {
+        formData.append('remove_image', 'true');
+      }
 
-      const response = await fetch('/api/courses', {
-        method: 'POST',
+      const url = isEditMode ? `/api/courses/${courseId}` : '/api/courses';
+      const method = isEditMode ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
         body: formData,
       });
 
@@ -122,7 +167,7 @@ export function CourseForm() {
         router.push('/courses');
         router.refresh();
       } else {
-        setError(data.error || '코스 등록에 실패했습니다.');
+        setError(data.error || (isEditMode ? '코스 수정에 실패했습니다.' : '코스 등록에 실패했습니다.'));
       }
     } catch (err) {
       setError('코스 등록 중 오류가 발생했습니다.');
@@ -131,10 +176,14 @@ export function CourseForm() {
     }
   };
 
+  if (loadingCourse) {
+    return <div className="text-center py-8 text-gray-500">Loading course...</div>;
+  }
+
   if (!isLoaded) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="text-gray-500">지도를 불러오는 중...</div>
+        <div className="text-gray-500">Loading map...</div>
       </div>
     );
   }
@@ -177,8 +226,8 @@ export function CourseForm() {
         </p>
         <GoogleMap
           mapContainerStyle={containerStyle}
-          center={defaultCenter}
-          zoom={13}
+          center={path.length > 0 ? path[Math.floor(path.length / 2)] : defaultCenter}
+          zoom={path.length > 0 ? 13 : 13}
           onLoad={onLoad}
           onUnmount={onUnmount}
           options={{
@@ -216,6 +265,8 @@ export function CourseForm() {
                 fillOpacity: 0.2,
                 strokeWeight: 3,
                 strokeColor: '#0284c7',
+                editable: true,
+                draggable: false,
               }}
             />
           )}
@@ -231,15 +282,47 @@ export function CourseForm() {
         <label htmlFor="image" className="block text-sm font-medium text-gray-700 mb-2">
           코스 이미지
         </label>
-        <input
-          type="file"
-          id="image"
-          accept="image/*"
-          onChange={handleImageChange}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-        />
+        {existingImageUrl && !removeImage && (
+          <div className="mb-4">
+            <div className="w-full h-48 bg-gray-200 rounded-lg overflow-hidden mb-2">
+              <img
+                src={existingImageUrl}
+                alt="Current course image"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setRemoveImage(true)}
+              className="text-sm text-red-600 hover:text-red-800"
+            >
+              Remove Image
+            </button>
+          </div>
+        )}
+        {(!existingImageUrl || removeImage) && (
+          <input
+            type="file"
+            id="image"
+            accept="image/*"
+            onChange={handleImageChange}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          />
+        )}
         {image && (
           <p className="mt-2 text-sm text-gray-600">{image.name}</p>
+        )}
+        {removeImage && (
+          <button
+            type="button"
+            onClick={() => {
+              setRemoveImage(false);
+              setImage(null);
+            }}
+            className="mt-2 text-sm text-blue-600 hover:text-blue-800"
+          >
+            Cancel Remove
+          </button>
         )}
       </div>
 
@@ -262,7 +345,7 @@ export function CourseForm() {
           disabled={loading}
           className="flex-1 bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? '등록 중...' : '등록하기'}
+          {loading ? (isEditMode ? '수정 중...' : '등록 중...') : (isEditMode ? '수정하기' : '등록하기')}
         </button>
       </div>
     </form>

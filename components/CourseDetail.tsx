@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Course } from '@/types';
 import { GoogleMap, useJsApiLoader, Polyline } from '@react-google-maps/api';
-import { Heart, MessageCircle, MapPin, ArrowLeft } from 'lucide-react';
+import { Heart, MessageCircle, MapPin, ArrowLeft, Edit } from 'lucide-react';
 import { CommentSection } from './CommentSection';
 
 const containerStyle = {
@@ -101,7 +101,18 @@ export function CourseDetail({ courseId }: CourseDetailProps) {
       )}
 
       <div>
-        <h1 className="text-2xl font-bold mb-2">{course.title}</h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-2xl font-bold">{course.title}</h1>
+          {course.is_owner && (
+            <button
+              onClick={() => router.push(`/courses/${course.id}/edit`)}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+            >
+              <Edit className="w-4 h-4" />
+              <span>Edit</span>
+            </button>
+          )}
+        </div>
         <p className="text-sm text-gray-500 mb-4">
           {course.username} · {new Date(course.created_at).toLocaleDateString('ko-KR')}
         </p>

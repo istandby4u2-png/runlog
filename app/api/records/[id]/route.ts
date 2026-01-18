@@ -91,12 +91,22 @@ export async function PUT(
 
     // 새 이미지 업로드
     if (imageFile && imageFile.size > 0) {
-      // 기존 이미지 삭제
-      if (imageUrl) {
-        await deleteImage(imageUrl);
+      try {
+        // 기존 이미지 삭제
+        if (imageUrl) {
+          await deleteImage(imageUrl);
+        }
+        
+        imageUrl = await uploadImage(imageFile, 'records');
+        if (!imageUrl) {
+          console.error('❌ 이미지 업로드 실패: uploadImage가 null을 반환했습니다.');
+          // 이미지 업로드 실패해도 기록 수정은 계속 진행
+        }
+      } catch (error: any) {
+        console.error('❌ 이미지 업로드 중 오류 발생:', error);
+        console.error('❌ 오류 메시지:', error?.message);
+        // 이미지 업로드 실패해도 기록 수정은 계속 진행
       }
-      
-      imageUrl = await uploadImage(imageFile, 'records');
     }
 
     await runningRecords.update(recordId, {

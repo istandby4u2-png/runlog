@@ -185,7 +185,8 @@ export const courses = {
       username: (data.users as any)?.username,
       likes_count: likesCount,
       comments_count: commentsCount,
-      is_liked: isLiked
+      is_liked: isLiked,
+      is_owner: userId ? data.user_id === userId : false
     };
   },
 
@@ -208,6 +209,30 @@ export const courses = {
 
     if (error) {
       console.error('Course create error:', error);
+      throw error;
+    }
+    return data;
+  },
+
+  async update(id: number, course: {
+    title?: string;
+    description?: string | null;
+    path_data?: string;
+    image_url?: string | null;
+    distance?: number | null;
+  }) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { data, error } = await supabaseAdmin
+      .from('courses')
+      .update(course)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Course update error:', error);
       throw error;
     }
     return data;

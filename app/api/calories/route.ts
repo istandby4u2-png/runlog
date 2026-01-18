@@ -20,8 +20,9 @@ export async function POST(request: NextRequest) {
 
     if (!apiKey) {
       console.error('❌ GEMINI_API_KEY가 설정되지 않았습니다.');
+      console.error('❌ Vercel 환경 변수에 GEMINI_API_KEY가 Production 환경에 추가되었는지 확인해주세요.');
       return NextResponse.json(
-        { error: 'GEMINI_API_KEY가 설정되지 않았습니다. .env 파일을 확인하고 서버를 재시작해주세요.' },
+        { error: '서버 설정 오류가 발생했습니다. 관리자에게 문의해주세요.' },
         { status: 500 }
       );
     }

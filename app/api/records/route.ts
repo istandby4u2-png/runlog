@@ -60,6 +60,8 @@ export async function POST(request: NextRequest) {
     const mood = formData.get('mood') as string;
     const meal = formData.get('meal') as string;
     const calories = formData.get('calories') as string;
+    const sleepHours = formData.get('sleep_hours') as string;
+    const sleepQuality = formData.get('sleep_quality') as string;
     const imageFile = formData.get('image') as File | null;
 
     if (!title || !recordDate) {
@@ -97,7 +99,9 @@ export async function POST(request: NextRequest) {
       weather: weather || null,
       mood: mood || null,
       meal: meal || null,
-      calories: calories ? parseInt(calories) : null
+      calories: calories ? parseInt(calories) : null,
+      sleep_hours: sleepHours ? parseFloat(sleepHours) : null,
+      sleep_quality: sleepQuality || null
     });
 
     return NextResponse.json(

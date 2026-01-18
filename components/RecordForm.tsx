@@ -26,6 +26,8 @@ export function RecordForm({ recordId }: RecordFormProps) {
   const [calories, setCalories] = useState<number | null>(null);
   const [calculatingCalories, setCalculatingCalories] = useState(false);
   const [calorieError, setCalorieError] = useState<string | null>(null);
+  const [sleepHours, setSleepHours] = useState('');
+  const [sleepQuality, setSleepQuality] = useState('');
   const [courses, setCourses] = useState<Course[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -103,6 +105,8 @@ export function RecordForm({ recordId }: RecordFormProps) {
       setMood(record.mood || '');
       setMeal(record.meal || '');
       setCalories(record.calories || null);
+      setSleepHours(record.sleep_hours?.toString() || '');
+      setSleepQuality(record.sleep_quality || '');
       setExistingImageUrl(record.image_url || null);
     } catch (error) {
       console.error('Failed to fetch record:', error);
@@ -222,6 +226,12 @@ export function RecordForm({ recordId }: RecordFormProps) {
       }
       if (calories !== null) {
         formData.append('calories', calories.toString());
+      }
+      if (sleepHours) {
+        formData.append('sleep_hours', sleepHours);
+      }
+      if (sleepQuality) {
+        formData.append('sleep_quality', sleepQuality);
       }
       if (removeImage) {
         formData.append('remove_image', 'true');
@@ -407,6 +417,41 @@ export function RecordForm({ recordId }: RecordFormProps) {
         <p className="mt-1 text-xs text-gray-500">
           Calories will be automatically calculated when you enter a meal.
         </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label htmlFor="sleep_hours" className="block text-sm font-medium text-gray-700 mb-2">
+            Sleep Hours
+          </label>
+          <input
+            type="number"
+            id="sleep_hours"
+            step="0.5"
+            min="0"
+            max="24"
+            value={sleepHours}
+            onChange={(e) => setSleepHours(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            placeholder="Hours"
+          />
+        </div>
+        <div>
+          <label htmlFor="sleep_quality" className="block text-sm font-medium text-gray-700 mb-2">
+            Sleep Quality
+          </label>
+          <select
+            id="sleep_quality"
+            value={sleepQuality}
+            onChange={(e) => setSleepQuality(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          >
+            <option value="">Select</option>
+            <option value="deep">Deep Sleep</option>
+            <option value="woke_once">Woke Once</option>
+            <option value="woke_multiple">Woke 2+ Times</option>
+          </select>
+        </div>
       </div>
 
       <div>

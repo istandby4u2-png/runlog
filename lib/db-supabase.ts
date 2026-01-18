@@ -371,6 +371,8 @@ export const runningRecords = {
     mood?: string | null;
     meal?: string | null;
     calories?: number | null;
+    sleep_hours?: number | null;
+    sleep_quality?: string | null;
   }) {
     if (!supabaseAdmin) {
       throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
@@ -400,6 +402,8 @@ export const runningRecords = {
     mood?: string | null;
     meal?: string | null;
     calories?: number | null;
+    sleep_hours?: number | null;
+    sleep_quality?: string | null;
   }) {
     if (!supabaseAdmin) {
       throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');

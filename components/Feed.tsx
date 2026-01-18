@@ -204,13 +204,38 @@ export function Feed() {
               <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-orange-800 mb-1">러닝 전 식사</p>
+                    <p className="text-sm font-medium text-orange-800 mb-1">Pre-run Meal</p>
                     <p className="text-sm text-orange-700">{record.meal}</p>
                   </div>
                   {record.calories && (
                     <div className="ml-4 text-right">
-                      <p className="text-xs text-orange-600 mb-1">칼로리</p>
+                      <p className="text-xs text-orange-600 mb-1">Calories</p>
                       <p className="text-lg font-bold text-orange-800">{record.calories.toLocaleString()} kcal</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {(record.sleep_hours || record.sleep_quality) && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm font-medium text-blue-800 mb-2">Sleep</p>
+                <div className="flex items-center gap-4">
+                  {record.sleep_hours && (
+                    <div>
+                      <p className="text-xs text-blue-600 mb-1">Hours</p>
+                      <p className="text-sm font-semibold text-blue-800">{record.sleep_hours} hrs</p>
+                    </div>
+                  )}
+                  {record.sleep_quality && (
+                    <div>
+                      <p className="text-xs text-blue-600 mb-1">Quality</p>
+                      <p className="text-sm font-semibold text-blue-800">
+                        {record.sleep_quality === 'deep' ? 'Deep Sleep' :
+                         record.sleep_quality === 'woke_once' ? 'Woke Once' :
+                         record.sleep_quality === 'woke_multiple' ? 'Woke 2+ Times' :
+                         record.sleep_quality}
+                      </p>
                     </div>
                   )}
                 </div>

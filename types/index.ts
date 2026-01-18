@@ -18,6 +18,7 @@ export interface Course {
   likes_count?: number;
   comments_count?: number;
   is_liked?: boolean;
+  is_owner?: boolean;
 }
 
 export interface RunningRecord {

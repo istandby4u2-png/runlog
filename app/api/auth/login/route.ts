@@ -1,0 +1,58 @@
+import { NextRequest, NextResponse } from 'next/server';
+import db from '@/lib/db';
+import { verifyPassword, generateToken } from '@/lib/auth';
+
+export async function POST(request: NextRequest) {
+  try {
+    const { email, password } = await request.json();
+
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: '이메일과 비밀번호를 입력해주세요.' },
+        { status: 400 }
+      );
+    }
+
+    // 사용자 조회
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
+    if (!user) {
+      return NextResponse.json(
+        { error: '이메일 또는 비밀번호가 올바르지 않습니다.' },
+        { status: 401 }
+      );
+    }
+
+    // 비밀번호 확인
+    const isValid = await verifyPassword(password, user.password);
+    if (!isValid) {
+      return NextResponse.json(
+        { error: '이메일 또는 비밀번호가 올바르지 않습니다.' },
+        { status: 401 }
+      );
+    }
+
+    // 토큰 생성
+    const token = generateToken(user.id);
+
+    // 쿠키 설정
+    const response = NextResponse.json(
+      { message: '로그인 성공', user: { id: user.id, username: user.username, email: user.email } },
+      { status: 200 }
+    );
+
+    response.cookies.set('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7, // 7일
+    });
+
+    return response;
+  } catch (error) {
+    console.error('Login error:', error);
+    return NextResponse.json(
+      { error: '서버 오류가 발생했습니다.' },
+      { status: 500 }
+    );
+  }
+}

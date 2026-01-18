@@ -3,7 +3,7 @@ import { verifyToken, getUserFromRequest } from '@/lib/auth';
 import { LogoutButton } from '@/components/LogoutButton';
 
 export default async function ProfilePage() {
-  const user = getUserFromRequest();
+  const user = await getUserFromRequest();
 
   if (!user) {
     redirect('/login');

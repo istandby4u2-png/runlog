@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { courses } from '@/lib/db-supabase';
 import { getUserIdFromRequest } from '@/lib/auth';
 
 export async function GET(
@@ -10,33 +10,7 @@ export async function GET(
     const userId = getUserIdFromRequest();
     const courseId = parseInt(params.id);
 
-    let course: any;
-    if (userId) {
-      course = db.prepare(`
-        SELECT 
-          c.*,
-          u.username,
-          (SELECT COUNT(*) FROM likes WHERE course_id = c.id) as likes_count,
-          (SELECT COUNT(*) FROM comments WHERE course_id = c.id) as comments_count,
-          EXISTS(SELECT 1 FROM likes WHERE course_id = c.id AND user_id = ?) as is_liked
-        FROM courses c
-        JOIN users u ON c.user_id = u.id
-        WHERE c.id = ?
-      `).get(userId, courseId);
-    } else {
-      course = db.prepare(`
-        SELECT 
-          c.*,
-          u.username,
-          (SELECT COUNT(*) FROM likes WHERE course_id = c.id) as likes_count,
-          (SELECT COUNT(*) FROM comments WHERE course_id = c.id) as comments_count,
-          0 as is_liked
-        FROM courses c
-        JOIN users u ON c.user_id = u.id
-        WHERE c.id = ?
-      `).get(courseId);
-    }
-
+    const course = await courses.findById(courseId, userId);
     if (!course) {
       return NextResponse.json(
         { error: '코스를 찾을 수 없습니다.' },

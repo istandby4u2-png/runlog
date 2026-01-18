@@ -1,48 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { courses } from '@/lib/db-supabase';
 import { getUserIdFromRequest } from '@/lib/auth';
-import fs from 'fs';
-import path from 'path';
-
-const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'courses');
-
-// 업로드 디렉토리 생성
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+import { uploadImage } from '@/lib/cloudinary';
 
 export async function GET(request: NextRequest) {
   try {
     const userId = getUserIdFromRequest();
-    
-    let courses: any[];
-    if (userId) {
-      courses = db.prepare(`
-        SELECT 
-          c.*,
-          u.username,
-          (SELECT COUNT(*) FROM likes WHERE course_id = c.id) as likes_count,
-          (SELECT COUNT(*) FROM comments WHERE course_id = c.id) as comments_count,
-          EXISTS(SELECT 1 FROM likes WHERE course_id = c.id AND user_id = ?) as is_liked
-        FROM courses c
-        JOIN users u ON c.user_id = u.id
-        ORDER BY c.created_at DESC
-      `).all(userId) as any[];
-    } else {
-      courses = db.prepare(`
-        SELECT 
-          c.*,
-          u.username,
-          (SELECT COUNT(*) FROM likes WHERE course_id = c.id) as likes_count,
-          (SELECT COUNT(*) FROM comments WHERE course_id = c.id) as comments_count,
-          0 as is_liked
-        FROM courses c
-        JOIN users u ON c.user_id = u.id
-        ORDER BY c.created_at DESC
-      `).all() as any[];
-    }
-
-    return NextResponse.json(courses);
+    const coursesList = await courses.findAll(userId);
+    return NextResponse.json(coursesList);
   } catch (error) {
     console.error('Get courses error:', error);
     return NextResponse.json(
@@ -78,17 +43,10 @@ export async function POST(request: NextRequest) {
 
     let imageUrl = null;
     if (imageFile && imageFile.size > 0) {
-      const buffer = Buffer.from(await imageFile.arrayBuffer());
-      const filename = `${Date.now()}-${imageFile.name}`;
-      const filepath = path.join(uploadDir, filename);
-      fs.writeFileSync(filepath, buffer);
-      imageUrl = `/uploads/courses/${filename}`;
+      imageUrl = await uploadImage(imageFile, 'runlog/courses');
     }
 
-    const result = db.prepare(`
-      INSERT INTO courses (user_id, title, description, path_data, image_url, distance)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
+    const newCourse = await courses.create(
       userId,
       title,
       description || null,
@@ -98,7 +56,7 @@ export async function POST(request: NextRequest) {
     );
 
     return NextResponse.json(
-      { message: '코스가 등록되었습니다.', courseId: result.lastInsertRowid },
+      { message: '코스가 등록되었습니다.', courseId: newCourse.id },
       { status: 201 }
     );
   } catch (error) {

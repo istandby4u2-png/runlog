@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { runningRecords } from '@/lib/db-supabase';
 import { getUserIdFromRequest } from '@/lib/auth';
-import fs from 'fs';
-import path from 'path';
-
-const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'records');
+import { uploadImage, deleteImage } from '@/lib/cloudinary';
 
 export async function GET(
   request: NextRequest,
@@ -14,37 +11,7 @@ export async function GET(
     const userId = getUserIdFromRequest();
     const recordId = parseInt(params.id);
 
-    let record: any;
-    if (userId) {
-      record = db.prepare(`
-        SELECT 
-          r.*,
-          u.username,
-          c.title as course_title,
-          (SELECT COUNT(*) FROM likes WHERE record_id = r.id) as likes_count,
-          (SELECT COUNT(*) FROM comments WHERE record_id = r.id) as comments_count,
-          EXISTS(SELECT 1 FROM likes WHERE record_id = r.id AND user_id = ?) as is_liked
-        FROM running_records r
-        JOIN users u ON r.user_id = u.id
-        LEFT JOIN courses c ON r.course_id = c.id
-        WHERE r.id = ?
-      `).get(userId, recordId);
-    } else {
-      record = db.prepare(`
-        SELECT 
-          r.*,
-          u.username,
-          c.title as course_title,
-          (SELECT COUNT(*) FROM likes WHERE record_id = r.id) as likes_count,
-          (SELECT COUNT(*) FROM comments WHERE record_id = r.id) as comments_count,
-          0 as is_liked
-        FROM running_records r
-        JOIN users u ON r.user_id = u.id
-        LEFT JOIN courses c ON r.course_id = c.id
-        WHERE r.id = ?
-      `).get(recordId);
-    }
-
+    const record = await runningRecords.findById(recordId, userId);
     if (!record) {
       return NextResponse.json(
         { error: '기록을 찾을 수 없습니다.' },
@@ -78,7 +45,7 @@ export async function PUT(
     const recordId = parseInt(params.id);
 
     // 기록 소유자 확인
-    const existingRecord = db.prepare('SELECT user_id FROM running_records WHERE id = ?').get(recordId) as any;
+    const existingRecord = await runningRecords.findById(recordId);
     if (!existingRecord) {
       return NextResponse.json(
         { error: '기록을 찾을 수 없습니다.' },
@@ -114,14 +81,11 @@ export async function PUT(
       );
     }
 
-    let imageUrl = existingRecord.image_url;
+    let imageUrl = existingRecord.image_url || null;
     
     // 이미지 삭제
     if (removeImage && imageUrl) {
-      const oldImagePath = path.join(process.cwd(), 'public', imageUrl);
-      if (fs.existsSync(oldImagePath)) {
-        fs.unlinkSync(oldImagePath);
-      }
+      await deleteImage(imageUrl);
       imageUrl = null;
     }
 
@@ -129,38 +93,25 @@ export async function PUT(
     if (imageFile && imageFile.size > 0) {
       // 기존 이미지 삭제
       if (imageUrl) {
-        const oldImagePath = path.join(process.cwd(), 'public', imageUrl);
-        if (fs.existsSync(oldImagePath)) {
-          fs.unlinkSync(oldImagePath);
-        }
+        await deleteImage(imageUrl);
       }
       
-      const buffer = Buffer.from(await imageFile.arrayBuffer());
-      const filename = `${Date.now()}-${imageFile.name}`;
-      const filepath = path.join(uploadDir, filename);
-      fs.writeFileSync(filepath, buffer);
-      imageUrl = `/uploads/records/${filename}`;
+      imageUrl = await uploadImage(imageFile, 'runlog/records');
     }
 
-    db.prepare(`
-      UPDATE running_records 
-      SET title = ?, content = ?, record_date = ?, course_id = ?, 
-          distance = ?, duration = ?, image_url = ?, weather = ?, mood = ?, meal = ?, calories = ?
-      WHERE id = ?
-    `).run(
+    await runningRecords.update(recordId, {
       title,
-      content || null,
-      recordDate,
-      courseId ? parseInt(courseId) : null,
-      distance ? parseFloat(distance) : null,
-      duration ? parseInt(duration) : null,
-      imageUrl,
-      weather || null,
-      mood || null,
-      meal || null,
-      calories ? parseFloat(calories) : null,
-      recordId
-    );
+      content: content || null,
+      record_date: recordDate,
+      course_id: courseId ? parseInt(courseId) : null,
+      distance: distance ? parseFloat(distance) : null,
+      duration: duration ? parseInt(duration) : null,
+      image_url: imageUrl,
+      weather: weather || null,
+      mood: mood || null,
+      meal: meal || null,
+      calories: calories ? parseInt(calories) : null
+    });
 
     return NextResponse.json(
       { message: '기록이 수정되었습니다.' },
@@ -191,7 +142,7 @@ export async function DELETE(
     const recordId = parseInt(params.id);
 
     // 기록 소유자 확인
-    const existingRecord = db.prepare('SELECT user_id, image_url FROM running_records WHERE id = ?').get(recordId) as any;
+    const existingRecord = await runningRecords.findById(recordId);
     if (!existingRecord) {
       return NextResponse.json(
         { error: '기록을 찾을 수 없습니다.' },
@@ -208,14 +159,11 @@ export async function DELETE(
 
     // 이미지 파일 삭제
     if (existingRecord.image_url) {
-      const imagePath = path.join(process.cwd(), 'public', existingRecord.image_url);
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
+      await deleteImage(existingRecord.image_url);
     }
 
     // 기록 삭제
-    db.prepare('DELETE FROM running_records WHERE id = ?').run(recordId);
+    await runningRecords.delete(recordId);
 
     return NextResponse.json(
       { message: '기록이 삭제되었습니다.' },

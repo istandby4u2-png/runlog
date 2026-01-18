@@ -1,53 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { runningRecords } from '@/lib/db-supabase';
 import { getUserIdFromRequest } from '@/lib/auth';
-import fs from 'fs';
-import path from 'path';
-
-const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'records');
-
-// 업로드 디렉토리 생성
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+import { uploadImage } from '@/lib/cloudinary';
 
 export async function GET(request: NextRequest) {
   try {
     const userId = getUserIdFromRequest();
-    
-    let records: any[];
-    if (userId) {
-      records = db.prepare(`
-        SELECT 
-          r.*,
-          u.username,
-          c.title as course_title,
-          (SELECT COUNT(*) FROM likes WHERE record_id = r.id) as likes_count,
-          (SELECT COUNT(*) FROM comments WHERE record_id = r.id) as comments_count,
-          EXISTS(SELECT 1 FROM likes WHERE record_id = r.id AND user_id = ?) as is_liked,
-          r.user_id = ? as is_owner
-        FROM running_records r
-        JOIN users u ON r.user_id = u.id
-        LEFT JOIN courses c ON r.course_id = c.id
-        ORDER BY r.created_at DESC
-      `).all(userId, userId) as any[];
-    } else {
-      records = db.prepare(`
-        SELECT 
-          r.*,
-          u.username,
-          c.title as course_title,
-          (SELECT COUNT(*) FROM likes WHERE record_id = r.id) as likes_count,
-          (SELECT COUNT(*) FROM comments WHERE record_id = r.id) as comments_count,
-          0 as is_liked,
-          0 as is_owner
-        FROM running_records r
-        JOIN users u ON r.user_id = u.id
-        LEFT JOIN courses c ON r.course_id = c.id
-        ORDER BY r.created_at DESC
-      `).all() as any[];
-    }
-
+    const records = await runningRecords.findAll(userId);
     return NextResponse.json(records);
   } catch (error) {
     console.error('Get records error:', error);
@@ -90,33 +49,26 @@ export async function POST(request: NextRequest) {
 
     let imageUrl = null;
     if (imageFile && imageFile.size > 0) {
-      const buffer = Buffer.from(await imageFile.arrayBuffer());
-      const filename = `${Date.now()}-${imageFile.name}`;
-      const filepath = path.join(uploadDir, filename);
-      fs.writeFileSync(filepath, buffer);
-      imageUrl = `/uploads/records/${filename}`;
+      imageUrl = await uploadImage(imageFile, 'runlog/records');
     }
 
-    const result = db.prepare(`
-      INSERT INTO running_records (user_id, course_id, title, content, image_url, distance, duration, record_date, weather, mood, meal, calories)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      userId,
-      courseId ? parseInt(courseId) : null,
+    const record = await runningRecords.create({
+      user_id: userId,
+      course_id: courseId ? parseInt(courseId) : null,
       title,
-      content || null,
-      imageUrl,
-      distance ? parseFloat(distance) : null,
-      duration ? parseInt(duration) : null,
-      recordDate,
-      weather || null,
-      mood || null,
-      meal || null,
-      calories ? parseFloat(calories) : null
-    );
+      content: content || null,
+      image_url: imageUrl,
+      distance: distance ? parseFloat(distance) : null,
+      duration: duration ? parseInt(duration) : null,
+      record_date: recordDate,
+      weather: weather || null,
+      mood: mood || null,
+      meal: meal || null,
+      calories: calories ? parseInt(calories) : null
+    });
 
     return NextResponse.json(
-      { message: '기록이 등록되었습니다.', recordId: result.lastInsertRowid },
+      { message: '기록이 등록되었습니다.', recordId: record.id },
       { status: 201 }
     );
   } catch (error) {

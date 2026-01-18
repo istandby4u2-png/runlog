@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { users } from '@/lib/db-supabase';
 import { hashPassword } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 중복 확인
-    const existingUser = db.prepare('SELECT id FROM users WHERE email = ? OR username = ?').get(email, username);
+    const existingUser = await users.findByUsernameOrEmail(username, email);
     if (existingUser) {
       return NextResponse.json(
         { error: '이미 사용 중인 이메일 또는 사용자 이름입니다.' },
@@ -26,14 +26,10 @@ export async function POST(request: NextRequest) {
     const hashedPassword = await hashPassword(password);
 
     // 사용자 생성
-    const result = db.prepare('INSERT INTO users (username, email, password) VALUES (?, ?, ?)').run(
-      username,
-      email,
-      hashedPassword
-    );
+    const newUser = await users.create(username, email, hashedPassword);
 
     return NextResponse.json(
-      { message: '회원가입이 완료되었습니다.', userId: result.lastInsertRowid },
+      { message: '회원가입이 완료되었습니다.', userId: newUser.id },
       { status: 201 }
     );
   } catch (error) {

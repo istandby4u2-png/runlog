@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
-import db from './db';
+import { users } from './db-supabase';
 import { User } from '@/types';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -42,10 +42,17 @@ export function getUserIdFromRequest(): number | null {
   }
 }
 
-export function getUserFromRequest(): User | null {
+export async function getUserFromRequest(): Promise<User | null> {
   const userId = getUserIdFromRequest();
   if (!userId) return null;
 
-  const user = db.prepare('SELECT id, username, email, created_at FROM users WHERE id = ?').get(userId) as User | undefined;
-  return user || null;
+  const user = await users.findById(userId);
+  if (!user) return null;
+
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    created_at: user.created_at
+  };
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { comments } from '@/lib/db-supabase';
 import { getUserIdFromRequest } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
@@ -15,23 +15,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const comments = courseId
-      ? db.prepare(`
-          SELECT c.*, u.username
-          FROM comments c
-          JOIN users u ON c.user_id = u.id
-          WHERE c.course_id = ?
-          ORDER BY c.created_at ASC
-        `).all(courseId)
-      : db.prepare(`
-          SELECT c.*, u.username
-          FROM comments c
-          JOIN users u ON c.user_id = u.id
-          WHERE c.record_id = ?
-          ORDER BY c.created_at ASC
-        `).all(recordId);
+    const commentsList = courseId
+      ? await comments.findByCourseId(parseInt(courseId))
+      : await comments.findByRecordId(parseInt(recordId!));
 
-    return NextResponse.json(comments);
+    return NextResponse.json(commentsList);
   } catch (error) {
     console.error('Get comments error:', error);
     return NextResponse.json(
@@ -60,18 +48,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = db.prepare(`
-      INSERT INTO comments (user_id, course_id, record_id, content)
-      VALUES (?, ?, ?, ?)
-    `).run(
-      userId,
-      course_id || null,
-      record_id || null,
+    const newComment = await comments.create({
+      user_id: userId,
+      course_id: course_id ? parseInt(course_id) : null,
+      record_id: record_id ? parseInt(record_id) : null,
       content
-    );
+    });
 
     return NextResponse.json(
-      { message: '댓글이 등록되었습니다.', commentId: result.lastInsertRowid },
+      { message: '댓글이 등록되었습니다.', commentId: newComment.id },
       { status: 201 }
     );
   } catch (error) {

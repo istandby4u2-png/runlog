@@ -96,18 +96,30 @@ export function CourseForm({ courseId }: CourseFormProps) {
   }, []);
 
   const onPolygonComplete = useCallback((polygon: google.maps.Polygon) => {
-    polygonRef.current = polygon;
-    const path = polygon.getPath();
-    const coordinates: LatLng[] = [];
-    
-    path.forEach((latLng) => {
-      coordinates.push({
-        lat: latLng.lat(),
-        lng: latLng.lng()
-      });
-    });
+    try {
+      polygonRef.current = polygon;
+      const path = polygon.getPath();
+      const coordinates: LatLng[] = [];
+      
+      if (path) {
+        path.forEach((latLng) => {
+          if (latLng) {
+            const lat = latLng.lat();
+            const lng = latLng.lng();
+            if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
+              coordinates.push({ lat, lng });
+            }
+          }
+        });
+      }
 
-    setPath(coordinates);
+      if (coordinates.length > 0) {
+        setPath(coordinates);
+      }
+    } catch (error) {
+      console.error('Error processing polygon:', error);
+      setError('Failed to process course path. Please try again.');
+    }
   }, []);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -203,6 +215,20 @@ export function CourseForm({ courseId }: CourseFormProps) {
     );
   }
 
+  // center 계산 (안전하게 처리)
+  const getMapCenter = (): { lat: number; lng: number } => {
+    if (path.length > 0) {
+      const midIndex = Math.floor(path.length / 2);
+      const midPoint = path[midIndex];
+      if (midPoint && typeof midPoint.lat === 'number' && typeof midPoint.lng === 'number') {
+        return { lat: midPoint.lat, lng: midPoint.lng };
+      }
+    }
+    return defaultCenter;
+  };
+
+  const mapCenter = getMapCenter();
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div>
@@ -241,8 +267,8 @@ export function CourseForm({ courseId }: CourseFormProps) {
         </p>
         <GoogleMap
           mapContainerStyle={containerStyle}
-          center={path.length > 0 ? path[Math.floor(path.length / 2)] : defaultCenter}
-          zoom={path.length > 0 ? 13 : 13}
+          center={mapCenter}
+          zoom={13}
           onLoad={onLoad}
           onUnmount={onUnmount}
           options={{
@@ -252,26 +278,28 @@ export function CourseForm({ courseId }: CourseFormProps) {
             fullscreenControl: true,
           }}
         >
-          <DrawingManager
-            onPolygonComplete={onPolygonComplete}
-            options={{
-              drawingMode: google.maps.drawing.OverlayType.POLYGON,
-              drawingControl: true,
-              drawingControlOptions: {
-                position: google.maps.ControlPosition.TOP_CENTER,
-                drawingModes: [google.maps.drawing.OverlayType.POLYGON],
-              },
-              polygonOptions: {
-                fillColor: '#0ea5e9',
-                fillOpacity: 0.2,
-                strokeWeight: 3,
-                strokeColor: '#0284c7',
-                clickable: false,
-                editable: true,
-                zIndex: 1,
-              },
-            }}
-          />
+          {isLoaded && (
+            <DrawingManager
+              onPolygonComplete={onPolygonComplete}
+              options={{
+                drawingMode: google.maps.drawing.OverlayType.POLYGON,
+                drawingControl: true,
+                drawingControlOptions: {
+                  position: google.maps.ControlPosition.TOP_CENTER,
+                  drawingModes: [google.maps.drawing.OverlayType.POLYGON],
+                },
+                polygonOptions: {
+                  fillColor: '#0ea5e9',
+                  fillOpacity: 0.2,
+                  strokeWeight: 3,
+                  strokeColor: '#0284c7',
+                  clickable: false,
+                  editable: true,
+                  zIndex: 1,
+                },
+              }}
+            />
+          )}
           {path.length > 0 && (
             <Polygon
               paths={path}

@@ -111,7 +111,7 @@ export function ProfileForm({ user: initialUser }: ProfileFormProps) {
           id="username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
           required
         />
       </div>
@@ -160,7 +160,7 @@ export function ProfileForm({ user: initialUser }: ProfileFormProps) {
             id="profileImage"
             accept="image/*"
             onChange={handleImageChange}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
           />
         )}
         {image && (
@@ -181,14 +181,14 @@ export function ProfileForm({ user: initialUser }: ProfileFormProps) {
         <button
           type="button"
           onClick={() => router.back()}
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+          className="flex-1 px-4 py-2 bg-white border border-black text-black rounded hover:bg-black hover:text-white transition-colors"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={loading}
-          className="flex-1 bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 bg-black text-white px-4 py-2 rounded hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {loading ? 'Updating...' : 'Update Profile'}
         </button>

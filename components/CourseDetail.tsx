@@ -146,7 +146,7 @@ export function CourseDetail({ courseId }: CourseDetailProps) {
           <p className="text-gray-700 mb-4 whitespace-pre-wrap">{course.description}</p>
         )}
         {course.distance && (
-          <div className="flex items-center gap-1 text-primary-600 mb-4">
+          <div className="flex items-center gap-1 text-black mb-4">
             <MapPin className="w-5 h-5" />
             <span className="font-medium">{course.distance.toFixed(2)} km</span>
           </div>
@@ -199,7 +199,7 @@ export function CourseDetail({ courseId }: CourseDetailProps) {
           <div className="flex items-center gap-2">
             <button
               onClick={() => router.push(`/courses/${course.id}/edit`)}
-              className="flex items-center gap-1 text-gray-600 hover:text-primary-600 text-sm"
+              className="flex items-center gap-1 px-2 py-1 bg-white border border-black text-black hover:bg-black hover:text-white transition-colors text-sm rounded"
               title="Edit"
             >
               <Edit className="w-4 h-4" />
@@ -207,7 +207,7 @@ export function CourseDetail({ courseId }: CourseDetailProps) {
             </button>
             <button
               onClick={handleDelete}
-              className="flex items-center gap-1 text-gray-600 hover:text-red-600 text-sm"
+              className="flex items-center gap-1 px-2 py-1 bg-white border border-black text-black hover:bg-black hover:text-white transition-colors text-sm rounded"
               title="Delete"
             >
               <Trash2 className="w-4 h-4" />

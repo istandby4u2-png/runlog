@@ -138,7 +138,7 @@ export function Feed() {
       {records.map((record) => (
         <div
           key={record.id}
-          className="bg-white rounded-lg shadow-md overflow-hidden"
+          className="bg-white rounded border border-gray-200 overflow-hidden"
         >
           {record.image_url && (
             <div className="w-full h-64 bg-gray-200 relative">
@@ -218,21 +218,21 @@ export function Feed() {
             )}
 
             {record.meal && (
-              <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+              <div className="mb-4 p-3 bg-white border border-gray-300 rounded">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-orange-800 mb-1">Pre-run Meal</p>
-                    <p className="text-sm text-orange-700">{record.meal}</p>
+                    <p className="text-sm font-medium text-black mb-1">Pre-run Meal</p>
+                    <p className="text-sm text-gray-700">{record.meal}</p>
                     {record.meal_timing_hours && (
-                      <p className="text-xs text-orange-600 mt-1">
+                      <p className="text-xs text-gray-500 mt-1">
                         🕐 {record.meal_timing_hours} {record.meal_timing_hours === 1 ? 'hour' : 'hours'} before
                       </p>
                     )}
                   </div>
                   {record.calories && (
                     <div className="ml-4 text-right">
-                      <p className="text-xs text-orange-600 mb-1">Calories</p>
-                      <p className="text-lg font-bold text-orange-800">{record.calories.toLocaleString()} kcal</p>
+                      <p className="text-xs text-gray-500 mb-1">Calories</p>
+                      <p className="text-lg font-bold text-black">{record.calories.toLocaleString()} kcal</p>
                     </div>
                   )}
                 </div>
@@ -240,19 +240,19 @@ export function Feed() {
             )}
 
             {(record.sleep_hours || record.sleep_quality) && (
-              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm font-medium text-blue-800 mb-2">Sleep</p>
+              <div className="mb-4 p-3 bg-white border border-gray-300 rounded">
+                <p className="text-sm font-medium text-black mb-2">Sleep</p>
                 <div className="flex items-center gap-4">
                   {record.sleep_hours && (
                     <div>
-                      <p className="text-xs text-blue-600 mb-1">Hours</p>
-                      <p className="text-sm font-semibold text-blue-800">{record.sleep_hours} hrs</p>
+                      <p className="text-xs text-gray-500 mb-1">Hours</p>
+                      <p className="text-sm font-semibold text-black">{record.sleep_hours} hrs</p>
                     </div>
                   )}
                   {record.sleep_quality && (
                     <div>
-                      <p className="text-xs text-blue-600 mb-1">Quality</p>
-                      <p className="text-sm font-semibold text-blue-800">
+                      <p className="text-xs text-gray-500 mb-1">Quality</p>
+                      <p className="text-sm font-semibold text-black">
                         {record.sleep_quality === 'deep' ? 'Deep Sleep' :
                          record.sleep_quality === 'woke_once' ? 'Woke Once' :
                          record.sleep_quality === 'woke_multiple' ? 'Woke 2+ Times' :
@@ -269,13 +269,13 @@ export function Feed() {
                 <button
                   onClick={() => handleLike(record.id)}
                   className={`flex items-center gap-2 ${
-                    record.is_liked ? 'text-red-500' : 'text-gray-500'
-                  } hover:text-red-500 transition-colors`}
+                    record.is_liked ? 'text-black' : 'text-gray-400'
+                  } hover:text-black transition-colors`}
                 >
                   <Heart className={`w-5 h-5 ${record.is_liked ? 'fill-current' : ''}`} />
                   <span>{record.likes_count || 0}</span>
                 </button>
-                <div className="flex items-center gap-2 text-gray-500">
+                <div className="flex items-center gap-2 text-gray-400">
                   <MessageCircle className="w-5 h-5" />
                   <span>{record.comments_count || 0}</span>
                 </div>
@@ -285,7 +285,7 @@ export function Feed() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => router.push(`/records/${record.id}/edit`)}
-                    className="flex items-center gap-1 text-gray-600 hover:text-primary-600 text-sm"
+                    className="flex items-center gap-1 px-2 py-1 bg-white border border-black text-black hover:bg-black hover:text-white transition-colors text-sm rounded"
                     title="수정"
                   >
                     <Edit className="w-4 h-4" />
@@ -293,7 +293,7 @@ export function Feed() {
                   </button>
                   <button
                     onClick={() => handleDelete(record.id)}
-                    className="flex items-center gap-1 text-gray-600 hover:text-red-600 text-sm"
+                    className="flex items-center gap-1 px-2 py-1 bg-white border border-black text-black hover:bg-black hover:text-white transition-colors text-sm rounded"
                     title="삭제"
                   >
                     <Trash2 className="w-4 h-4" />

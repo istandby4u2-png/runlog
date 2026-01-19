@@ -31,11 +31,13 @@ export function Header() {
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-14">
           <Link href="/" className="flex items-center">
-            <span className="text-xl font-bold text-primary-600">RunLog</span>
+            <span className="text-2xl font-bold text-black tracking-wide" style={{ fontFamily: "'Brush Script MT', cursive" }}>
+              RunLog
+            </span>
           </Link>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-1 text-gray-600 hover:text-gray-900 text-sm"
+            className="flex items-center gap-1 px-3 py-1.5 bg-white border border-black text-black hover:bg-black hover:text-white transition-colors text-sm rounded"
             aria-label="Logout"
           >
             <LogOut className="w-4 h-4" />

@@ -66,7 +66,7 @@ export function CommentSection({ recordId, courseId }: CommentSectionProps) {
     <div className="mt-4">
       <button
         onClick={() => setShowComments(!showComments)}
-        className="text-sm text-primary-600 hover:underline mb-2"
+        className="text-sm text-black hover:underline mb-2"
       >
         {showComments ? '댓글 숨기기' : '댓글 보기'}
       </button>
@@ -97,12 +97,12 @@ export function CommentSection({ recordId, courseId }: CommentSectionProps) {
               value={newComment}
               onChange={(e) => setNewComment(e.target.value)}
               placeholder="댓글을 입력하세요..."
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-black focus:border-black"
             />
             <button
               type="submit"
               disabled={loading || !newComment.trim()}
-              className="bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <Send className="w-4 h-4" />
             </button>

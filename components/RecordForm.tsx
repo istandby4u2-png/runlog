@@ -307,7 +307,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
           id="title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
           required
         />
       </div>
@@ -321,7 +321,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
           id="recordDate"
           value={recordDate}
           onChange={(e) => setRecordDate(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
           required
         />
       </div>
@@ -334,7 +334,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
           id="courseId"
           value={courseId}
           onChange={(e) => setCourseId(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
         >
           <option value="">Select a course</option>
           {courses.map((course) => (
@@ -356,7 +356,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
             step="0.01"
             value={distance}
             onChange={(e) => setDistance(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
           />
         </div>
         <div>
@@ -368,7 +368,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
             id="duration"
             value={duration}
             onChange={(e) => setDuration(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
           />
         </div>
       </div>
@@ -382,7 +382,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
             id="weather"
             value={weather}
             onChange={(e) => setWeather(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-lg"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black text-lg"
           >
             <option value="">Select</option>
             {weatherOptions.map((option) => (
@@ -400,7 +400,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
             id="mood"
             value={mood}
             onChange={(e) => setMood(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-lg"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black text-lg"
           >
             <option value="">Select</option>
             {moodOptions.map((option) => (
@@ -423,7 +423,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
             id="meal"
             value={meal}
             onChange={(e) => handleMealChange(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
             placeholder="예: 치킨 샐러드, 바나나 2개, 단백질 쉐이크"
           />
           <p className="mt-1 text-xs text-gray-500">
@@ -441,16 +441,16 @@ export function RecordForm({ recordId }: RecordFormProps) {
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Total Calories
           </label>
-          <div className="h-[42px] flex items-center justify-center px-4 py-2 border-2 rounded-lg bg-gradient-to-r from-orange-50 to-orange-100 border-orange-200">
+          <div className="h-[42px] flex items-center justify-center px-4 py-2 border border-gray-300 rounded bg-white">
             {calculatingCalories ? (
               <div className="flex items-center gap-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600"></div>
-                <span className="text-sm text-orange-700 font-medium">계산 중...</span>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></div>
+                <span className="text-sm text-gray-700 font-medium">계산 중...</span>
               </div>
             ) : calories !== null ? (
               <div className="flex items-center gap-2">
-                <span className="text-2xl font-bold text-orange-800">{calories.toLocaleString()}</span>
-                <span className="text-sm font-medium text-orange-600">kcal</span>
+                <span className="text-2xl font-bold text-black">{calories.toLocaleString()}</span>
+                <span className="text-sm font-medium text-gray-600">kcal</span>
               </div>
             ) : (
               <span className="text-sm text-gray-400">-</span>
@@ -471,7 +471,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
             step="0.5"
             min="0"
             max="24"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
             placeholder="2"
           />
           <p className="mt-1 text-xs text-gray-500">
@@ -493,7 +493,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
             max="24"
             value={sleepHours}
             onChange={(e) => setSleepHours(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
             placeholder="Hours"
           />
         </div>
@@ -505,7 +505,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
             id="sleep_quality"
             value={sleepQuality}
             onChange={(e) => setSleepQuality(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
           >
             <option value="">Select</option>
             <option value="deep">Deep Sleep</option>
@@ -524,7 +524,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
           value={content}
           onChange={(e) => setContent(e.target.value)}
           rows={6}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
           placeholder="How was your run today?"
         />
       </div>
@@ -546,7 +546,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
                 setRemoveImage(true);
                 setExistingImageUrl(null);
               }}
-              className="absolute top-2 right-2 bg-red-500 text-white px-3 py-1 rounded-lg text-sm hover:bg-red-600"
+              className="absolute top-2 right-2 bg-white border border-black text-black px-3 py-1 rounded text-sm hover:bg-black hover:text-white transition-colors"
             >
               Delete
             </button>
@@ -557,7 +557,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
           id="image"
           accept="image/*"
           onChange={handleImageChange}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
         />
         {image && (
           <div className="mt-2">
@@ -580,14 +580,14 @@ export function RecordForm({ recordId }: RecordFormProps) {
         <button
           type="button"
           onClick={() => router.back()}
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+          className="flex-1 px-4 py-2 bg-white border border-black text-black rounded hover:bg-black hover:text-white transition-colors"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={loading || loadingRecord}
-          className="flex-1 bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 bg-black text-white px-4 py-2 rounded hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {loading ? (isEditMode ? 'Updating...' : 'Saving...') : (isEditMode ? 'Update' : 'Save')}
         </button>

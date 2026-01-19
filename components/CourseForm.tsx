@@ -359,7 +359,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
           id="title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
           required
         />
       </div>
@@ -447,7 +447,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
               id="courseType"
               value={courseType}
               onChange={(e) => setCourseType(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
             >
               <option value="">Select</option>
               <option value="Round Trip">Round Trip</option>
@@ -464,7 +464,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
               id="surfaceType"
               value={surfaceType}
               onChange={(e) => setSurfaceType(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
             >
               <option value="">Select</option>
               <option value="Road">Road</option>
@@ -482,7 +482,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
               id="elevation"
               value={elevation}
               onChange={(e) => setElevation(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
             >
               <option value="">Select</option>
               <option value="Flat">Flat</option>
@@ -499,7 +499,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
               id="trafficLights"
               value={trafficLights}
               onChange={(e) => setTrafficLights(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
             >
               <option value="">Select</option>
               <option value="None">None</option>
@@ -517,7 +517,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
               id="streetlights"
               value={streetlights}
               onChange={(e) => setStreetlights(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
             >
               <option value="">Select</option>
               <option value="None">None</option>
@@ -537,7 +537,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={4}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
         />
       </div>
 
@@ -569,7 +569,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
             id="image"
             accept="image/*"
             onChange={handleImageChange}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
           />
         )}
         {image && (
@@ -599,14 +599,14 @@ export function CourseForm({ courseId }: CourseFormProps) {
         <button
           type="button"
           onClick={() => router.back()}
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+          className="flex-1 px-4 py-2 bg-white border border-black text-black rounded hover:bg-black hover:text-white transition-colors"
         >
           취소
         </button>
         <button
           type="submit"
           disabled={loading}
-          className="flex-1 bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 bg-black text-white px-4 py-2 rounded hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {loading ? (isEditMode ? '수정 중...' : '등록 중...') : (isEditMode ? '수정하기' : '등록하기')}
         </button>

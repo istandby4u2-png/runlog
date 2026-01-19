@@ -44,7 +44,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary-600 mb-2">RunLog</h1>
+          <h1 className="text-3xl font-bold text-black mb-2">RunLog</h1>
           <p className="text-gray-600">러닝코스 서비스</p>
         </div>
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-md">
@@ -82,13 +82,13 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-primary-600 text-white py-2 px-4 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+            className="w-full bg-black text-white py-2 px-4 rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
           >
             {loading ? '로그인 중...' : '로그인'}
           </button>
           <p className="mt-4 text-center text-sm text-gray-600">
             계정이 없으신가요?{' '}
-            <Link href="/register" className="text-primary-600 hover:underline">
+            <Link href="/register" className="text-black hover:underline">
               회원가입
             </Link>
           </p>

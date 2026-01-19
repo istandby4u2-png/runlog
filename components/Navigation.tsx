@@ -16,7 +16,7 @@ export function Navigation() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50">
-      <div className="flex justify-around items-center h-16">
+      <div className="flex justify-around items-center h-14">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || 
@@ -26,12 +26,12 @@ export function Navigation() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center justify-center flex-1 h-full ${
-                isActive ? 'text-primary-600' : 'text-gray-500'
-              }`}
+              className={`flex items-center justify-center flex-1 h-full ${
+                isActive ? 'text-black' : 'text-gray-400'
+              } hover:text-black transition-colors`}
+              aria-label={item.label}
             >
-              <Icon className="w-6 h-6 mb-1" />
-              <span className="text-xs">{item.label}</span>
+              <Icon className="w-6 h-6" />
             </Link>
           );
         })}

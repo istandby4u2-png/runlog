@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { users } from '@/lib/db-supabase';
 import { getUserIdFromRequest } from '@/lib/auth';
-import { uploadImage, deleteImage } from '@/lib/cloudinary';
+import { uploadImage, deleteImage } from '@/lib/blob-storage';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {

@@ -40,7 +40,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
   const [loadingCourse, setLoadingCourse] = useState(isEditMode);
   const polygonRef = useRef<google.maps.Polygon | null>(null);
 
-  const { isLoaded } = useJsApiLoader({
+  const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
     libraries
@@ -48,42 +48,62 @@ export function CourseForm({ courseId }: CourseFormProps) {
 
   // 수정 모드일 때 코스 데이터 로드
   const fetchCourse = useCallback(async () => {
-    if (!courseId) return;
+    if (!courseId) {
+      setLoadingCourse(false);
+      return;
+    }
     
     try {
+      setError('');
       const response = await fetch(`/api/courses/${courseId}`);
+      
       if (!response.ok) {
-        throw new Error('Failed to load course');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to load course');
       }
+      
       const course = await response.json();
       
+      if (!course) {
+        throw new Error('Course data is empty');
+      }
+      
+      // 안전하게 데이터 설정
       setTitle(course.title || '');
-      setDescription(course.description || '');
+      setDescription(course.description || null || '');
       setExistingImageUrl(course.image_url || null);
-      setCourseType(course.course_type || '');
-      setSurfaceType(course.surface_type || '');
-      setElevation(course.elevation || '');
-      setTrafficLights(course.traffic_lights || '');
-      setStreetlights(course.streetlights || '');
+      setCourseType(course.course_type || null || '');
+      setSurfaceType(course.surface_type || null || '');
+      setElevation(course.elevation || null || '');
+      setTrafficLights(course.traffic_lights || null || '');
+      setStreetlights(course.streetlights || null || '');
       
       // path_data 파싱 (안전하게 처리)
       if (course.path_data) {
         try {
           // 이미 객체인 경우와 문자열인 경우 모두 처리
-          const pathData = typeof course.path_data === 'string' 
-            ? JSON.parse(course.path_data) 
-            : course.path_data;
+          let pathData: any;
+          if (typeof course.path_data === 'string') {
+            pathData = JSON.parse(course.path_data);
+          } else if (Array.isArray(course.path_data)) {
+            pathData = course.path_data;
+          } else {
+            pathData = null;
+          }
           
           // 배열이고 유효한 좌표인지 확인
           if (Array.isArray(pathData) && pathData.length > 0) {
             // 각 좌표의 유효성 검사
             const validPath = pathData.filter((point: any) => {
-              return point && 
-                     typeof point === 'object' &&
-                     typeof point.lat === 'number' && 
-                     typeof point.lng === 'number' &&
-                     !isNaN(point.lat) && 
-                     !isNaN(point.lng);
+              if (!point || typeof point !== 'object') return false;
+              const lat = point.lat;
+              const lng = point.lng;
+              return typeof lat === 'number' && 
+                     typeof lng === 'number' &&
+                     !isNaN(lat) && 
+                     !isNaN(lng) &&
+                     isFinite(lat) &&
+                     isFinite(lng);
             });
             
             if (validPath.length > 0) {
@@ -95,16 +115,18 @@ export function CourseForm({ courseId }: CourseFormProps) {
           } else {
             setPath([]);
           }
-        } catch (parseError) {
+        } catch (parseError: any) {
           console.error('Failed to parse path_data:', parseError);
           setPath([]);
+          // path_data 파싱 실패는 치명적이지 않으므로 에러로 표시하지 않음
         }
       } else {
         setPath([]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch course:', error);
-      setError('Failed to load course. Please try again.');
+      setError(error?.message || 'Failed to load course. Please try again.');
+      // 에러 발생 시에도 로딩 상태는 해제
     } finally {
       setLoadingCourse(false);
     }
@@ -247,13 +269,53 @@ export function CourseForm({ courseId }: CourseFormProps) {
   };
 
   if (loadingCourse) {
-    return <div className="text-center py-8 text-gray-500">Loading course...</div>;
+    return (
+      <div className="text-center py-8">
+        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mb-4"></div>
+        <p className="text-gray-500">Loading course...</p>
+      </div>
+    );
+  }
+
+  if (error && !loadingCourse) {
+    return (
+      <div className="text-center py-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-w-md mx-auto">
+          <p className="text-red-700 font-medium mb-2">Error loading course</p>
+          <p className="text-red-600 text-sm mb-4">{error}</p>
+          <button
+            onClick={() => {
+              setError('');
+              setLoadingCourse(true);
+              fetchCourse();
+            }}
+            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 text-sm"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="text-center py-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-w-md mx-auto">
+          <p className="text-red-700 font-medium mb-2">Map loading error</p>
+          <p className="text-red-600 text-sm">{loadError.message || 'Failed to load Google Maps'}</p>
+        </div>
+      </div>
+    );
   }
 
   if (!isLoaded) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="text-gray-500">Loading map...</div>
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mb-4"></div>
+          <div className="text-gray-500">Loading map...</div>
+        </div>
       </div>
     );
   }

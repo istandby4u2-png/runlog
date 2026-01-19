@@ -215,10 +215,10 @@ export function InstagramShare({ record }: InstagramShareProps) {
     <button
       onClick={generateInstagramImage}
       className="flex items-center gap-2 px-3 py-1.5 bg-white border border-black text-black rounded hover:bg-black hover:text-white transition-colors text-sm"
-      title="인스타그램 스타일 이미지 생성"
+      title="Generate image for Instagram"
     >
       <Instagram size={16} />
-      <span>Instagram</span>
+      <span>for Instagram</span>
     </button>
   );
 }

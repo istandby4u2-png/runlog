@@ -81,6 +81,27 @@ export const users = {
       throw error;
     }
     return data;
+  },
+
+  async update(id: number, updates: {
+    username?: string;
+    profile_image_url?: string | null;
+  }) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('User update error:', error);
+      throw error;
+    }
+    return data;
   }
 };
 
@@ -94,7 +115,7 @@ export const courses = {
       .from('courses')
       .select(`
         *,
-        users:user_id (username)
+        users:user_id (username, profile_image_url)
       `)
       .order('created_at', { ascending: false });
 
@@ -119,6 +140,7 @@ export const courses = {
           return {
             ...course,
             username: (course.users as any)?.username,
+            user_profile_image_url: (course.users as any)?.profile_image_url || null,
             likes_count: likesCount,
             comments_count: commentsCount,
             is_liked: isLiked
@@ -163,7 +185,7 @@ export const courses = {
       .from('courses')
       .select(`
         *,
-        users:user_id (username)
+        users:user_id (username, profile_image_url)
       `)
       .eq('id', id)
       .single();
@@ -183,6 +205,7 @@ export const courses = {
     return {
       ...data,
       username: (data.users as any)?.username,
+      user_profile_image_url: (data.users as any)?.profile_image_url || null,
       likes_count: likesCount,
       comments_count: commentsCount,
       is_liked: isLiked,
@@ -220,6 +243,11 @@ export const courses = {
     path_data?: string;
     image_url?: string | null;
     distance?: number | null;
+    course_type?: string | null;
+    surface_type?: string | null;
+    elevation?: string | null;
+    traffic_lights?: string | null;
+    streetlights?: string | null;
   }) {
     if (!supabaseAdmin) {
       throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
@@ -236,6 +264,80 @@ export const courses = {
       throw error;
     }
     return data;
+  },
+
+  async delete(id: number) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { error } = await supabaseAdmin
+      .from('courses')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Course delete error:', error);
+      throw error;
+    }
+    return true;
+  },
+
+  async search(query: string, userId?: number | null) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    
+    let searchQuery = supabaseAdmin
+      .from('courses')
+      .select(`
+        *,
+        users:user_id (username, profile_image_url)
+      `)
+      .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
+      .order('created_at', { ascending: false });
+
+    const { data, error } = await searchQuery;
+    
+    if (error) {
+      console.error('Courses search error:', error);
+      return [];
+    }
+
+    if (userId) {
+      // 각 코스에 대해 좋아요 수, 댓글 수, 좋아요 여부 조회
+      const coursesWithStats = await Promise.all(
+        (data || []).map(async (course) => {
+          const [likesCount, commentsCount, isLiked, isOwner] = await Promise.all([
+            this.getLikesCount(course.id),
+            this.getCommentsCount(course.id),
+            this.isLiked(course.id, userId),
+            this.isOwner(course.id, userId)
+          ]);
+
+          return {
+            ...course,
+            username: (course.users as any)?.username,
+            user_profile_image_url: (course.users as any)?.profile_image_url || null,
+            likes_count: likesCount,
+            comments_count: commentsCount,
+            is_liked: isLiked,
+            is_owner: isOwner
+          };
+        })
+      );
+
+      return coursesWithStats;
+    } else {
+      return (data || []).map((course) => ({
+        ...course,
+        username: (course.users as any)?.username,
+        user_profile_image_url: (course.users as any)?.profile_image_url || null,
+        likes_count: 0,
+        comments_count: 0,
+        is_liked: false,
+        is_owner: false
+      }));
+    }
   },
 
   async getLikesCount(courseId: number) {
@@ -275,6 +377,19 @@ export const courses = {
       .single();
     
     return !error && data !== null;
+  },
+
+  async isOwner(courseId: number, userId: number) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { data, error } = await supabaseAdmin
+      .from('courses')
+      .select('user_id')
+      .eq('id', courseId)
+      .single();
+    
+    return !error && data && data.user_id === userId;
   }
 };
 
@@ -288,7 +403,7 @@ export const runningRecords = {
       .from('running_records')
       .select(`
         *,
-        users:user_id (username),
+        users:user_id (username, profile_image_url),
         courses:course_id (title)
       `)
       .order('created_at', { ascending: false });
@@ -307,15 +422,16 @@ export const runningRecords = {
           userId ? this.isLiked(record.id, userId) : false
         ]);
 
-        return {
-          ...record,
-          username: (record.users as any)?.username,
-          course_title: (record.courses as any)?.title,
-          likes_count: likesCount,
-          comments_count: commentsCount,
-          is_liked: isLiked,
-          is_owner: userId ? record.user_id === userId : false
-        };
+          return {
+            ...record,
+            username: (record.users as any)?.username,
+            user_profile_image_url: (record.users as any)?.profile_image_url || null,
+            course_title: (record.courses as any)?.title,
+            likes_count: likesCount,
+            comments_count: commentsCount,
+            is_liked: isLiked,
+            is_owner: userId ? record.user_id === userId : false
+          };
       })
     );
 

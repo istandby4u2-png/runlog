@@ -66,6 +66,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
     { value: '👏', label: '👏' },
     { value: '👍', label: '👍' },
     { value: '💪', label: '💪' },
+    { value: '😭', label: '😭' },
   ];
 
   useEffect(() => {

@@ -2,6 +2,7 @@ export interface User {
   id: number;
   username: string;
   email: string;
+  profile_image_url?: string | null;
   created_at: string;
 }
 
@@ -15,6 +16,7 @@ export interface Course {
   distance?: number;
   created_at: string;
   username?: string;
+  user_profile_image_url?: string | null;
   likes_count?: number;
   comments_count?: number;
   is_liked?: boolean;
@@ -39,6 +41,7 @@ export interface RunningRecord {
   sleep_quality?: string;
   created_at: string;
   username?: string;
+  user_profile_image_url?: string | null;
   course_title?: string;
   likes_count?: number;
   comments_count?: number;

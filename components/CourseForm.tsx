@@ -30,6 +30,11 @@ export function CourseForm({ courseId }: CourseFormProps) {
   const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
   const [removeImage, setRemoveImage] = useState(false);
   const [path, setPath] = useState<LatLng[]>([]);
+  const [courseType, setCourseType] = useState('');
+  const [surfaceType, setSurfaceType] = useState('');
+  const [elevation, setElevation] = useState('');
+  const [trafficLights, setTrafficLights] = useState('');
+  const [streetlights, setStreetlights] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingCourse, setLoadingCourse] = useState(isEditMode);
@@ -55,6 +60,11 @@ export function CourseForm({ courseId }: CourseFormProps) {
       setTitle(course.title || '');
       setDescription(course.description || '');
       setExistingImageUrl(course.image_url || null);
+      setCourseType(course.course_type || '');
+      setSurfaceType(course.surface_type || '');
+      setElevation(course.elevation || '');
+      setTrafficLights(course.traffic_lights || '');
+      setStreetlights(course.streetlights || '');
       
       // path_data 파싱 (안전하게 처리)
       if (course.path_data) {
@@ -192,6 +202,11 @@ export function CourseForm({ courseId }: CourseFormProps) {
       formData.append('description', description);
       formData.append('path_data', JSON.stringify(path));
       formData.append('distance', calculateDistance(path).toFixed(2));
+      if (courseType) formData.append('course_type', courseType);
+      if (surfaceType) formData.append('surface_type', surfaceType);
+      if (elevation) formData.append('elevation', elevation);
+      if (trafficLights) formData.append('traffic_lights', trafficLights);
+      if (streetlights) formData.append('streetlights', streetlights);
       if (image) {
         formData.append('image', image);
       }
@@ -265,19 +280,6 @@ export function CourseForm({ courseId }: CourseFormProps) {
       </div>
 
       <div>
-        <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
-          코스 설명
-        </label>
-        <textarea
-          id="description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={4}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-        />
-      </div>
-
-      <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
           코스 경로 그리기 *
         </label>
@@ -341,8 +343,113 @@ export function CourseForm({ courseId }: CourseFormProps) {
       </div>
 
       <div>
+        <h3 className="text-lg font-semibold mb-4">Course Information</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="courseType" className="block text-sm font-medium text-gray-700 mb-2">
+              Course Type
+            </label>
+            <select
+              id="courseType"
+              value={courseType}
+              onChange={(e) => setCourseType(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            >
+              <option value="">Select</option>
+              <option value="Round Trip">Round Trip</option>
+              <option value="One Way">One Way</option>
+              <option value="Loop">Loop</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="surfaceType" className="block text-sm font-medium text-gray-700 mb-2">
+              Surface Type
+            </label>
+            <select
+              id="surfaceType"
+              value={surfaceType}
+              onChange={(e) => setSurfaceType(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            >
+              <option value="">Select</option>
+              <option value="Road">Road</option>
+              <option value="Trail">Trail</option>
+              <option value="Beach">Beach</option>
+              <option value="Track">Track</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="elevation" className="block text-sm font-medium text-gray-700 mb-2">
+              Elevation
+            </label>
+            <select
+              id="elevation"
+              value={elevation}
+              onChange={(e) => setElevation(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            >
+              <option value="">Select</option>
+              <option value="Flat">Flat</option>
+              <option value="Some">Some</option>
+              <option value="Very Much">Very Much</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="trafficLights" className="block text-sm font-medium text-gray-700 mb-2">
+              Traffic Lights
+            </label>
+            <select
+              id="trafficLights"
+              value={trafficLights}
+              onChange={(e) => setTrafficLights(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            >
+              <option value="">Select</option>
+              <option value="None">None</option>
+              <option value="1-2">1-2</option>
+              <option value="3-4">3-4</option>
+              <option value="Very Many">Very Many</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="streetlights" className="block text-sm font-medium text-gray-700 mb-2">
+              Streetlights
+            </label>
+            <select
+              id="streetlights"
+              value={streetlights}
+              onChange={(e) => setStreetlights(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            >
+              <option value="">Select</option>
+              <option value="None">None</option>
+              <option value="Moderate">Moderate</option>
+              <option value="Bright">Bright</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
+          Course Description
+        </label>
+        <textarea
+          id="description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={4}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+        />
+      </div>
+
+      <div>
         <label htmlFor="image" className="block text-sm font-medium text-gray-700 mb-2">
-          코스 이미지
+          Course Image
         </label>
         {existingImageUrl && !removeImage && (
           <div className="mb-4">

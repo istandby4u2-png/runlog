@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { RunningRecord } from '@/types';
 import { Heart, MessageCircle, MapPin, Clock, Edit, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -150,12 +151,25 @@ export function Feed() {
           )}
           <div className="p-4">
             <div className="flex items-start justify-between mb-2">
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold">{record.title}</h3>
-                <p className="text-sm text-gray-500">
-                  {record.username} · {format(new Date(record.record_date), 'yyyy년 M월 d일')}
-                </p>
-              </div>
+                  <div className="flex-1 flex items-center gap-2">
+                    {record.user_profile_image_url ? (
+                      <img
+                        src={record.user_profile_image_url}
+                        alt={record.username}
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-xs font-medium">
+                        {record.username?.charAt(0).toUpperCase() || 'U'}
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="text-lg font-semibold">{record.title}</h3>
+                      <p className="text-sm text-gray-500">
+                        {record.username} · {format(new Date(record.record_date), 'yyyy.M.d')}
+                      </p>
+                    </div>
+                  </div>
               {(record.weather || record.mood) && (
                 <div className="flex items-center gap-2 ml-2">
                   {record.weather && (
@@ -172,11 +186,14 @@ export function Feed() {
               )}
             </div>
 
-            {record.course_title && (
-              <div className="flex items-center gap-1 text-sm text-primary-600 mb-2">
+            {record.course_title && record.course_id && (
+              <Link
+                href={`/courses/${record.course_id}`}
+                className="flex items-center gap-1 text-sm text-primary-600 mb-2 hover:text-primary-800 hover:underline"
+              >
                 <MapPin className="w-4 h-4" />
                 {record.course_title}
-              </div>
+              </Link>
             )}
 
             {(record.distance || record.duration) && (

@@ -113,9 +113,22 @@ export function CourseDetail({ courseId }: CourseDetailProps) {
             </button>
           )}
         </div>
-        <p className="text-sm text-gray-500 mb-4">
-          {course.username} · {new Date(course.created_at).toLocaleDateString('ko-KR')}
-        </p>
+        <div className="flex items-center gap-2 mb-4">
+          {course.user_profile_image_url ? (
+            <img
+              src={course.user_profile_image_url}
+              alt={course.username}
+              className="w-8 h-8 rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-xs font-medium">
+              {course.username?.charAt(0).toUpperCase() || 'U'}
+            </div>
+          )}
+          <p className="text-sm text-gray-500">
+            {course.username} · {new Date(course.created_at).toLocaleDateString('en-US')}
+          </p>
+        </div>
         {course.description && (
           <p className="text-gray-700 mb-4 whitespace-pre-wrap">{course.description}</p>
         )}

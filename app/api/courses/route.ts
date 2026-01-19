@@ -16,7 +16,18 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = getUserIdFromRequest();
-    const coursesList = await courses.findAll(userId);
+    const searchParams = request.nextUrl.searchParams;
+    const searchQuery = searchParams.get('search');
+
+    let coursesList;
+    if (searchQuery && searchQuery.trim()) {
+      // 검색 쿼리가 있으면 검색 수행
+      coursesList = await courses.search(searchQuery.trim(), userId);
+    } else {
+      // 검색 쿼리가 없으면 전체 목록
+      coursesList = await courses.findAll(userId);
+    }
+    
     return NextResponse.json(coursesList);
   } catch (error: any) {
     console.error('Get courses error:', error);
@@ -54,6 +65,11 @@ export async function POST(request: NextRequest) {
     const description = formData.get('description') as string;
     const pathData = formData.get('path_data') as string;
     const distance = formData.get('distance') as string;
+    const courseType = formData.get('course_type') as string;
+    const surfaceType = formData.get('surface_type') as string;
+    const elevation = formData.get('elevation') as string;
+    const trafficLights = formData.get('traffic_lights') as string;
+    const streetlights = formData.get('streetlights') as string;
     const imageFile = formData.get('image') as File | null;
 
     if (!title || !pathData) {
@@ -84,7 +100,12 @@ export async function POST(request: NextRequest) {
       description || null,
       pathData,
       imageUrl,
-      distance ? parseFloat(distance) : null
+      distance ? parseFloat(distance) : null,
+      courseType || null,
+      surfaceType || null,
+      elevation || null,
+      trafficLights || null,
+      streetlights || null
     );
 
     return NextResponse.json(

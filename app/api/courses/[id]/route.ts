@@ -87,6 +87,11 @@ export async function PUT(
     const description = formData.get('description') as string;
     const pathData = formData.get('path_data') as string;
     const distance = formData.get('distance') as string;
+    const courseType = formData.get('course_type') as string;
+    const surfaceType = formData.get('surface_type') as string;
+    const elevation = formData.get('elevation') as string;
+    const trafficLights = formData.get('traffic_lights') as string;
+    const streetlights = formData.get('streetlights') as string;
     const imageFile = formData.get('image') as File | null;
     const removeImage = formData.get('remove_image') === 'true';
 
@@ -130,7 +135,12 @@ export async function PUT(
       description: description || null,
       path_data: pathData,
       image_url: imageUrl,
-      distance: distance ? parseFloat(distance) : null
+      distance: distance ? parseFloat(distance) : null,
+      course_type: courseType || null,
+      surface_type: surfaceType || null,
+      elevation: elevation || null,
+      traffic_lights: trafficLights || null,
+      streetlights: streetlights || null
     });
 
     return NextResponse.json(
@@ -143,6 +153,70 @@ export async function PUT(
       message: error?.message,
       stack: error?.stack,
     });
+    return NextResponse.json(
+      { 
+        error: '서버 오류가 발생했습니다.',
+        details: process.env.NODE_ENV === 'development' ? error?.message : undefined
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    if (!supabaseAdmin) {
+      console.error('❌ Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+      return NextResponse.json(
+        { error: '서버 설정 오류가 발생했습니다. 관리자에게 문의해주세요.' },
+        { status: 500 }
+      );
+    }
+
+    const userId = getUserIdFromRequest();
+    if (!userId) {
+      return NextResponse.json(
+        { error: '인증이 필요합니다.' },
+        { status: 401 }
+      );
+    }
+
+    const courseId = parseInt(params.id);
+    const existingCourse = await courses.findById(courseId);
+    
+    if (!existingCourse) {
+      return NextResponse.json(
+        { error: '코스를 찾을 수 없습니다.' },
+        { status: 404 }
+      );
+    }
+
+    if (existingCourse.user_id !== userId) {
+      return NextResponse.json(
+        { error: '삭제 권한이 없습니다.' },
+        { status: 403 }
+      );
+    }
+
+    if (existingCourse.image_url) {
+      try {
+        await deleteImage(existingCourse.image_url);
+      } catch (error: any) {
+        console.error('❌ 이미지 삭제 중 오류 발생:', error);
+      }
+    }
+
+    await courses.delete(courseId);
+
+    return NextResponse.json(
+      { message: '코스가 삭제되었습니다.' },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.error('Delete course error:', error);
     return NextResponse.json(
       { 
         error: '서버 오류가 발생했습니다.',

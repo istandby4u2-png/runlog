@@ -53,6 +53,7 @@ export async function getUserFromRequest(): Promise<User | null> {
     id: user.id,
     username: user.username,
     email: user.email,
+    profile_image_url: user.profile_image_url || null,
     created_at: user.created_at
   };
 }

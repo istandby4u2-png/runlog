@@ -1,0 +1,6 @@
+-- 코스 추가 필드 추가
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS course_type TEXT;
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS surface_type TEXT;
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS elevation TEXT;
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS traffic_lights TEXT;
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS streetlights TEXT;

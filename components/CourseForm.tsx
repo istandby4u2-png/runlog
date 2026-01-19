@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { GoogleMap, useJsApiLoader, DrawingManager, Polygon } from '@react-google-maps/api';
 import { LatLng } from '@/types';
@@ -47,96 +47,93 @@ export function CourseForm({ courseId }: CourseFormProps) {
   });
 
   // 수정 모드일 때 코스 데이터 로드
-  const fetchCourse = useCallback(async () => {
-    if (!courseId) {
+  useEffect(() => {
+    if (!isEditMode || !courseId) {
       setLoadingCourse(false);
       return;
     }
-    
-    try {
-      setError('');
-      const response = await fetch(`/api/courses/${courseId}`);
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to load course');
-      }
-      
-      const course = await response.json();
-      
-      if (!course) {
-        throw new Error('Course data is empty');
-      }
-      
-      // 안전하게 데이터 설정
-      setTitle(course.title || '');
-      setDescription(course.description || null || '');
-      setExistingImageUrl(course.image_url || null);
-      setCourseType(course.course_type || null || '');
-      setSurfaceType(course.surface_type || null || '');
-      setElevation(course.elevation || null || '');
-      setTrafficLights(course.traffic_lights || null || '');
-      setStreetlights(course.streetlights || null || '');
-      
-      // path_data 파싱 (안전하게 처리)
-      if (course.path_data) {
-        try {
-          // 이미 객체인 경우와 문자열인 경우 모두 처리
-          let pathData: any;
-          if (typeof course.path_data === 'string') {
-            pathData = JSON.parse(course.path_data);
-          } else if (Array.isArray(course.path_data)) {
-            pathData = course.path_data;
-          } else {
-            pathData = null;
-          }
-          
-          // 배열이고 유효한 좌표인지 확인
-          if (Array.isArray(pathData) && pathData.length > 0) {
-            // 각 좌표의 유효성 검사
-            const validPath = pathData.filter((point: any) => {
-              if (!point || typeof point !== 'object') return false;
-              const lat = point.lat;
-              const lng = point.lng;
-              return typeof lat === 'number' && 
-                     typeof lng === 'number' &&
-                     !isNaN(lat) && 
-                     !isNaN(lng) &&
-                     isFinite(lat) &&
-                     isFinite(lng);
-            });
-            
-            if (validPath.length > 0) {
-              setPath(validPath);
+
+    const fetchCourse = async () => {
+      try {
+        setError('');
+        const response = await fetch(`/api/courses/${courseId}`);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to load course');
+        }
+        
+        const course = await response.json();
+        
+        if (!course) {
+          throw new Error('Course data is empty');
+        }
+        
+        // 안전하게 데이터 설정
+        setTitle(course.title || '');
+        setDescription(course.description || null || '');
+        setExistingImageUrl(course.image_url || null);
+        setCourseType(course.course_type || null || '');
+        setSurfaceType(course.surface_type || null || '');
+        setElevation(course.elevation || null || '');
+        setTrafficLights(course.traffic_lights || null || '');
+        setStreetlights(course.streetlights || null || '');
+        
+        // path_data 파싱 (안전하게 처리)
+        if (course.path_data) {
+          try {
+            // 이미 객체인 경우와 문자열인 경우 모두 처리
+            let pathData: any;
+            if (typeof course.path_data === 'string') {
+              pathData = JSON.parse(course.path_data);
+            } else if (Array.isArray(course.path_data)) {
+              pathData = course.path_data;
             } else {
-              console.warn('No valid coordinates found in path_data');
+              pathData = null;
+            }
+            
+            // 배열이고 유효한 좌표인지 확인
+            if (Array.isArray(pathData) && pathData.length > 0) {
+              // 각 좌표의 유효성 검사
+              const validPath = pathData.filter((point: any) => {
+                if (!point || typeof point !== 'object') return false;
+                const lat = point.lat;
+                const lng = point.lng;
+                return typeof lat === 'number' && 
+                       typeof lng === 'number' &&
+                       !isNaN(lat) && 
+                       !isNaN(lng) &&
+                       isFinite(lat) &&
+                       isFinite(lng);
+              });
+              
+              if (validPath.length > 0) {
+                setPath(validPath);
+              } else {
+                console.warn('No valid coordinates found in path_data');
+                setPath([]);
+              }
+            } else {
               setPath([]);
             }
-          } else {
+          } catch (parseError: any) {
+            console.error('Failed to parse path_data:', parseError);
             setPath([]);
+            // path_data 파싱 실패는 치명적이지 않으므로 에러로 표시하지 않음
           }
-        } catch (parseError: any) {
-          console.error('Failed to parse path_data:', parseError);
+        } else {
           setPath([]);
-          // path_data 파싱 실패는 치명적이지 않으므로 에러로 표시하지 않음
         }
-      } else {
-        setPath([]);
+      } catch (error: any) {
+        console.error('Failed to fetch course:', error);
+        setError(error?.message || 'Failed to load course. Please try again.');
+        // 에러 발생 시에도 로딩 상태는 해제
+      } finally {
+        setLoadingCourse(false);
       }
-    } catch (error: any) {
-      console.error('Failed to fetch course:', error);
-      setError(error?.message || 'Failed to load course. Please try again.');
-      // 에러 발생 시에도 로딩 상태는 해제
-    } finally {
-      setLoadingCourse(false);
-    }
-  }, [courseId]);
+    };
 
-  useEffect(() => {
-    if (isEditMode && courseId) {
-      fetchCourse();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchCourse();
   }, [isEditMode, courseId]);
 
   const onLoad = useCallback((map: google.maps.Map) => {
@@ -321,8 +318,8 @@ export function CourseForm({ courseId }: CourseFormProps) {
     );
   }
 
-  // center 계산 (안전하게 처리)
-  const getMapCenter = useCallback((): { lat: number; lng: number } => {
+  // center 계산 (안전하게 처리) - useMemo로 최적화
+  const mapCenter = useMemo((): { lat: number; lng: number } => {
     if (path.length > 0) {
       const midIndex = Math.floor(path.length / 2);
       const midPoint = path[midIndex];
@@ -332,8 +329,6 @@ export function CourseForm({ courseId }: CourseFormProps) {
     }
     return defaultCenter;
   }, [path]);
-
-  const mapCenter = getMapCenter();
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">

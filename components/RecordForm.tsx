@@ -407,43 +407,51 @@ export function RecordForm({ recordId }: RecordFormProps) {
         </div>
       </div>
 
-      <div>
-        <label htmlFor="meal" className="block text-sm font-medium text-gray-700 mb-2">
-          Pre-run Meal
-        </label>
-        <div className="space-y-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Pre-run Meal */}
+        <div className="lg:col-span-2">
+          <label htmlFor="meal" className="block text-sm font-medium text-gray-700 mb-2">
+            Pre-run Meal
+          </label>
           <input
             type="text"
             id="meal"
             value={meal}
             onChange={(e) => handleMealChange(e.target.value)}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            placeholder="예: 돼지고기 수육 500g, 김치 한 접시, 깻잎, 청양고추, 와사비, 맥주 300cc"
+            placeholder="예: 치킨 샐러드, 바나나 2개, 단백질 쉐이크"
           />
-          {calculatingCalories && (
-            <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-              <p className="text-sm text-blue-700">Calculating calories...</p>
-            </div>
-          )}
-          {calories !== null && !calculatingCalories && (
-            <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
-              <span className="text-sm font-medium text-green-700">Total Calories:</span>
-              <span className="text-xl font-bold text-green-700">{calories.toLocaleString()} kcal</span>
-            </div>
-          )}
+          <p className="mt-1 text-xs text-gray-500">
+            Calories will be automatically calculated
+          </p>
           {calorieError && !calculatingCalories && (
-            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-sm text-yellow-700 whitespace-pre-line">{calorieError}</p>
-              <p className="text-xs text-yellow-600 mt-2">
-                💡 브라우저 콘솔(F12)에서 더 자세한 에러 정보를 확인할 수 있습니다.
-              </p>
+            <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-xs text-yellow-700">{calorieError}</p>
             </div>
           )}
         </div>
-        <p className="mt-1 text-xs text-gray-500">
-          Calories will be automatically calculated when you enter a meal.
-        </p>
+
+        {/* Total Calories */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Total Calories
+          </label>
+          <div className="h-[42px] flex items-center justify-center px-4 py-2 border-2 rounded-lg bg-gradient-to-r from-orange-50 to-orange-100 border-orange-200">
+            {calculatingCalories ? (
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600"></div>
+                <span className="text-sm text-orange-700 font-medium">계산 중...</span>
+              </div>
+            ) : calories !== null ? (
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-bold text-orange-800">{calories.toLocaleString()}</span>
+                <span className="text-sm font-medium text-orange-600">kcal</span>
+              </div>
+            ) : (
+              <span className="text-sm text-gray-400">-</span>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">

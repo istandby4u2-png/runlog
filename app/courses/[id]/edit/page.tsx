@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth';
 import { CourseForm } from '@/components/CourseForm';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,9 @@ export default async function EditCoursePage({
   return (
     <main className="container mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold mb-6">Edit Course</h1>
-      <CourseForm courseId={parseInt(params.id)} />
+      <ErrorBoundary>
+        <CourseForm courseId={parseInt(params.id)} />
+      </ErrorBoundary>
     </main>
   );
 }

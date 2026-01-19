@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Course } from '@/types';
 import { GoogleMap, useJsApiLoader, Polyline } from '@react-google-maps/api';
-import { Heart, MessageCircle, MapPin, ArrowLeft, Edit } from 'lucide-react';
+import { Heart, MessageCircle, MapPin, ArrowLeft, Edit, Trash2 } from 'lucide-react';
 import { CommentSection } from './CommentSection';
 
 const containerStyle = {
@@ -64,6 +64,30 @@ export function CourseDetail({ courseId }: CourseDetailProps) {
     }
   };
 
+  const handleDelete = async () => {
+    if (!course) return;
+    
+    if (!confirm('Are you sure you want to delete this course?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/courses/${course.id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        router.push('/courses');
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Failed to delete course.');
+      }
+    } catch (error) {
+      console.error('Failed to delete course:', error);
+      alert('An error occurred while deleting the course.');
+    }
+  };
+
   if (loading) {
     return <div className="text-center py-8 text-gray-500">로딩 중...</div>;
   }
@@ -101,18 +125,7 @@ export function CourseDetail({ courseId }: CourseDetailProps) {
       )}
 
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <h1 className="text-2xl font-bold">{course.title}</h1>
-          {course.is_owner && (
-            <button
-              onClick={() => router.push(`/courses/${course.id}/edit`)}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-            >
-              <Edit className="w-4 h-4" />
-              <span>Edit</span>
-            </button>
-          )}
-        </div>
+        <h1 className="text-2xl font-bold mb-2">{course.title}</h1>
         <div className="flex items-center gap-2 mb-4">
           {course.user_profile_image_url ? (
             <img
@@ -166,20 +179,42 @@ export function CourseDetail({ courseId }: CourseDetailProps) {
         </div>
       )}
 
-      <div className="flex items-center gap-4 pt-4 border-t border-gray-200">
-        <button
-          onClick={handleLike}
-          className={`flex items-center gap-2 ${
-            course.is_liked ? 'text-red-500' : 'text-gray-500'
-          } hover:text-red-500 transition-colors`}
-        >
-          <Heart className={`w-6 h-6 ${course.is_liked ? 'fill-current' : ''}`} />
-          <span className="font-medium">{course.likes_count || 0}</span>
-        </button>
-        <div className="flex items-center gap-2 text-gray-500">
-          <MessageCircle className="w-6 h-6" />
-          <span className="font-medium">{course.comments_count || 0}</span>
+      <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleLike}
+            className={`flex items-center gap-2 ${
+              course.is_liked ? 'text-red-500' : 'text-gray-500'
+            } hover:text-red-500 transition-colors`}
+          >
+            <Heart className={`w-6 h-6 ${course.is_liked ? 'fill-current' : ''}`} />
+            <span className="font-medium">{course.likes_count || 0}</span>
+          </button>
+          <div className="flex items-center gap-2 text-gray-500">
+            <MessageCircle className="w-6 h-6" />
+            <span className="font-medium">{course.comments_count || 0}</span>
+          </div>
         </div>
+        {course.is_owner && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => router.push(`/courses/${course.id}/edit`)}
+              className="flex items-center gap-1 text-gray-600 hover:text-primary-600 text-sm"
+              title="Edit"
+            >
+              <Edit className="w-4 h-4" />
+              <span className="hidden sm:inline">Edit</span>
+            </button>
+            <button
+              onClick={handleDelete}
+              className="flex items-center gap-1 text-gray-600 hover:text-red-600 text-sm"
+              title="Delete"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Delete</span>
+            </button>
+          </div>
+        )}
       </div>
 
       <CommentSection courseId={course.id} />

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { GoogleMap, useJsApiLoader, DrawingManager, Polygon } from '@react-google-maps/api';
 import { LatLng } from '@/types';
@@ -46,13 +46,10 @@ export function CourseForm({ courseId }: CourseFormProps) {
     libraries
   });
 
-  // 수정 모드일 때 코스 데이터 로드
-  const fetchCourse = useCallback(async () => {
-    if (!courseId) {
-      setLoadingCourse(false);
-      return;
-    }
-
+  // 수정 모드일 때 코스 데이터 로드 - RecordForm 패턴 따라 단순화
+  const fetchCourse = async () => {
+    if (!courseId) return;
+    
     try {
       setError('');
       setLoadingCourse(true);
@@ -131,16 +128,12 @@ export function CourseForm({ courseId }: CourseFormProps) {
     } finally {
       setLoadingCourse(false);
     }
-  }, [courseId]);
+  };
 
   useEffect(() => {
     if (isEditMode && courseId) {
       fetchCourse();
-    } else if (!isEditMode) {
-      setLoadingCourse(false);
     }
-    // fetchCourse는 courseId에만 의존하므로 courseId가 변경될 때만 재생성됨
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditMode, courseId]);
 
   const onLoad = useCallback((map: google.maps.Map) => {
@@ -309,24 +302,14 @@ export function CourseForm({ courseId }: CourseFormProps) {
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-w-md mx-auto">
           <p className="text-red-700 font-medium mb-2">Map loading error</p>
           <p className="text-red-600 text-sm">{loadError.message || 'Failed to load Google Maps'}</p>
+          <p className="text-xs text-red-500 mt-2">Please check your Google Maps API key in environment variables.</p>
         </div>
       </div>
     );
   }
 
-  if (!isLoaded) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mb-4"></div>
-          <div className="text-gray-500">Loading map...</div>
-        </div>
-      </div>
-    );
-  }
-
-  // center 계산 (안전하게 처리) - useMemo로 최적화
-  const mapCenter = useMemo((): { lat: number; lng: number } => {
+  // center 계산 (안전하게 처리) - 일반 함수로 변경 (useMemo 제거)
+  const getMapCenter = (): { lat: number; lng: number } => {
     if (path.length > 0) {
       const midIndex = Math.floor(path.length / 2);
       const midPoint = path[midIndex];
@@ -335,7 +318,9 @@ export function CourseForm({ courseId }: CourseFormProps) {
       }
     }
     return defaultCenter;
-  }, [path]);
+  };
+
+  const mapCenter = getMapCenter();
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -360,55 +345,64 @@ export function CourseForm({ courseId }: CourseFormProps) {
         <p className="text-sm text-gray-500 mb-2">
           지도에서 다각형 도구를 사용하여 코스 경로를 그려주세요.
         </p>
-        <GoogleMap
-          mapContainerStyle={containerStyle}
-          center={mapCenter}
-          zoom={13}
-          onLoad={onLoad}
-          onUnmount={onUnmount}
-          options={{
-            zoomControl: true,
-            streetViewControl: false,
-            mapTypeControl: false,
-            fullscreenControl: true,
-          }}
-        >
-          {isLoaded && typeof window !== 'undefined' && window.google && window.google.maps && (
-            <DrawingManager
-              onPolygonComplete={onPolygonComplete}
-              options={{
-                drawingMode: window.google.maps.drawing.OverlayType.POLYGON,
-                drawingControl: true,
-                drawingControlOptions: {
-                  position: window.google.maps.ControlPosition.TOP_CENTER,
-                  drawingModes: [window.google.maps.drawing.OverlayType.POLYGON],
-                },
-                polygonOptions: {
+        {isLoaded ? (
+          <GoogleMap
+            mapContainerStyle={containerStyle}
+            center={mapCenter}
+            zoom={13}
+            onLoad={onLoad}
+            onUnmount={onUnmount}
+            options={{
+              zoomControl: true,
+              streetViewControl: false,
+              mapTypeControl: false,
+              fullscreenControl: true,
+            }}
+          >
+            {typeof window !== 'undefined' && window.google && window.google.maps && window.google.maps.drawing && (
+              <DrawingManager
+                onPolygonComplete={onPolygonComplete}
+                options={{
+                  drawingMode: window.google.maps.drawing.OverlayType.POLYGON,
+                  drawingControl: true,
+                  drawingControlOptions: {
+                    position: window.google.maps.ControlPosition.TOP_CENTER,
+                    drawingModes: [window.google.maps.drawing.OverlayType.POLYGON],
+                  },
+                  polygonOptions: {
+                    fillColor: '#0ea5e9',
+                    fillOpacity: 0.2,
+                    strokeWeight: 3,
+                    strokeColor: '#0284c7',
+                    clickable: false,
+                    editable: true,
+                    zIndex: 1,
+                  },
+                }}
+              />
+            )}
+            {path.length > 0 && (
+              <Polygon
+                paths={path}
+                options={{
                   fillColor: '#0ea5e9',
                   fillOpacity: 0.2,
                   strokeWeight: 3,
                   strokeColor: '#0284c7',
-                  clickable: false,
                   editable: true,
-                  zIndex: 1,
-                },
-              }}
-            />
-          )}
-          {path.length > 0 && isLoaded && (
-            <Polygon
-              paths={path}
-              options={{
-                fillColor: '#0ea5e9',
-                fillOpacity: 0.2,
-                strokeWeight: 3,
-                strokeColor: '#0284c7',
-                editable: true,
-                draggable: false,
-              }}
-            />
-          )}
-        </GoogleMap>
+                  draggable: false,
+                }}
+              />
+            )}
+          </GoogleMap>
+        ) : (
+          <div className="w-full h-96 bg-gray-100 rounded-lg flex items-center justify-center">
+            <div className="text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mb-4"></div>
+              <div className="text-gray-500">Loading map...</div>
+            </div>
+          </div>
+        )}
         {path.length > 0 && (
           <p className="mt-2 text-sm text-gray-600">
             거리: {calculateDistance(path).toFixed(2)} km

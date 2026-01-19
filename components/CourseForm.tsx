@@ -139,7 +139,9 @@ export function CourseForm({ courseId }: CourseFormProps) {
     } else if (!isEditMode) {
       setLoadingCourse(false);
     }
-  }, [isEditMode, courseId, fetchCourse]);
+    // fetchCourse는 courseId에만 의존하므로 courseId가 변경될 때만 재생성됨
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode, courseId]);
 
   const onLoad = useCallback((map: google.maps.Map) => {
     // 맵 로드 완료

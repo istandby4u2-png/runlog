@@ -67,10 +67,10 @@ export function InstagramShare({ record }: InstagramShareProps) {
             }
           };
           bgImg.onerror = () => {
-            // 이미지 로드 실패 시 그라데이션 배경 사용
+            // 이미지 로드 실패 시 그라데이션 배경 사용 (블랙&화이트)
             const gradient = ctx.createLinearGradient(0, 0, 1080, 1080);
-            gradient.addColorStop(0, '#667eea');
-            gradient.addColorStop(1, '#764ba2');
+            gradient.addColorStop(0, '#1a1a1a');
+            gradient.addColorStop(1, '#4a4a4a');
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, 1080, 1080);
             resolve(null);
@@ -78,10 +78,10 @@ export function InstagramShare({ record }: InstagramShareProps) {
           bgImg.src = imageUrl;
         });
       } else {
-        // 이미지가 없으면 그라데이션 배경
+        // 이미지가 없으면 그라데이션 배경 (블랙&화이트)
         const gradient = ctx.createLinearGradient(0, 0, 1080, 1080);
-        gradient.addColorStop(0, '#667eea');
-        gradient.addColorStop(1, '#764ba2');
+        gradient.addColorStop(0, '#1a1a1a');
+        gradient.addColorStop(1, '#4a4a4a');
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, 1080, 1080);
       }
@@ -151,8 +151,8 @@ export function InstagramShare({ record }: InstagramShareProps) {
         });
       }
 
-      // 하단에 RunLog 로고
-      ctx.font = '36px "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic", sans-serif';
+      // 하단에 RunLog 로고 (펜글씨체)
+      ctx.font = 'bold 48px "Brush Script MT", cursive, "Apple SD Gothic Neo", sans-serif';
       ctx.fillStyle = '#ffffff';
       ctx.fillText('RunLog', 540, 1020);
 
@@ -214,11 +214,11 @@ export function InstagramShare({ record }: InstagramShareProps) {
   return (
     <button
       onClick={generateInstagramImage}
-      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all"
+      className="flex items-center gap-2 px-3 py-1.5 bg-white border border-black text-black rounded hover:bg-black hover:text-white transition-colors text-sm"
       title="인스타그램 스타일 이미지 생성"
     >
-      <Instagram size={18} />
-      <span>인스타그램 공유</span>
+      <Instagram size={16} />
+      <span>Instagram</span>
     </button>
   );
 }

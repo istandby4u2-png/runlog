@@ -128,13 +128,14 @@ export const courses = {
         return [];
       }
 
-      // 각 코스에 대해 좋아요 수, 댓글 수, 좋아요 여부 조회
+      // 각 코스에 대해 좋아요 수, 댓글 수, 좋아요 여부, 소유자 여부 조회
       const coursesWithStats = await Promise.all(
         (data || []).map(async (course) => {
-          const [likesCount, commentsCount, isLiked] = await Promise.all([
+          const [likesCount, commentsCount, isLiked, isOwner] = await Promise.all([
             this.getLikesCount(course.id),
             this.getCommentsCount(course.id),
-            this.isLiked(course.id, userId)
+            this.isLiked(course.id, userId),
+            this.isOwner(course.id, userId)
           ]);
 
           return {
@@ -143,7 +144,8 @@ export const courses = {
             user_profile_image_url: (course.users as any)?.profile_image_url || null,
             likes_count: likesCount,
             comments_count: commentsCount,
-            is_liked: isLiked
+            is_liked: isLiked,
+            is_owner: isOwner
           };
         })
       );
@@ -156,24 +158,15 @@ export const courses = {
         return [];
       }
 
-      const coursesWithStats = await Promise.all(
-        (data || []).map(async (course) => {
-          const [likesCount, commentsCount] = await Promise.all([
-            this.getLikesCount(course.id),
-            this.getCommentsCount(course.id)
-          ]);
-
-          return {
-            ...course,
-            username: (course.users as any)?.username,
-            likes_count: likesCount,
-            comments_count: commentsCount,
-            is_liked: false
-          };
-        })
-      );
-
-      return coursesWithStats;
+      return (data || []).map((course) => ({
+        ...course,
+        username: (course.users as any)?.username,
+        user_profile_image_url: (course.users as any)?.profile_image_url || null,
+        likes_count: 0,
+        comments_count: 0,
+        is_liked: false,
+        is_owner: false
+      }));
     }
   },
 

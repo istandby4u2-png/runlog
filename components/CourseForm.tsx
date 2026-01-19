@@ -136,7 +136,8 @@ export function CourseForm({ courseId }: CourseFormProps) {
     if (isEditMode && courseId) {
       fetchCourse();
     }
-  }, [isEditMode, courseId, fetchCourse]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode, courseId]);
 
   const onLoad = useCallback((map: google.maps.Map) => {
     // 맵 로드 완료
@@ -392,7 +393,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
               }}
             />
           )}
-          {path.length > 0 && (
+          {path.length > 0 && isLoaded && (
             <Polygon
               paths={path}
               options={{

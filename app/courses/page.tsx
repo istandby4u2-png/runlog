@@ -20,7 +20,7 @@ export default async function CoursesPage() {
         <h1 className="text-2xl font-bold">Running Course</h1>
         <Link
           href="/courses/new"
-          className="bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-700"
+          className="bg-black text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-gray-800 transition-colors"
         >
           <Plus className="w-5 h-5" />
           <span>New Course</span>

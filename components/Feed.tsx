@@ -269,8 +269,8 @@ export function Feed() {
                 <button
                   onClick={() => handleLike(record.id)}
                   className={`flex items-center gap-2 ${
-                    record.is_liked ? 'text-black' : 'text-gray-400'
-                  } hover:text-black transition-colors`}
+                    record.is_liked ? 'text-red-500' : 'text-gray-400'
+                  } hover:text-red-500 transition-colors`}
                 >
                   <Heart className={`w-5 h-5 ${record.is_liked ? 'fill-current' : ''}`} />
                   <span>{record.likes_count || 0}</span>

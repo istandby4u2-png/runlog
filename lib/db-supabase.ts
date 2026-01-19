@@ -213,7 +213,19 @@ export const courses = {
     };
   },
 
-  async create(userId: number, title: string, description: string | null, pathData: string, imageUrl: string | null, distance: number | null) {
+  async create(
+    userId: number,
+    title: string,
+    description: string | null,
+    pathData: string,
+    imageUrl: string | null,
+    distance: number | null,
+    courseType: string | null = null,
+    surfaceType: string | null = null,
+    elevation: string | null = null,
+    trafficLights: string | null = null,
+    streetlights: string | null = null
+  ) {
     if (!supabaseAdmin) {
       throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
     }
@@ -225,11 +237,16 @@ export const courses = {
         description,
         path_data: pathData,
         image_url: imageUrl,
-        distance
+        distance,
+        course_type: courseType,
+        surface_type: surfaceType,
+        elevation,
+        traffic_lights: trafficLights,
+        streetlights
       })
       .select()
       .single();
-
+    
     if (error) {
       console.error('Course create error:', error);
       throw error;

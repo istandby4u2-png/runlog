@@ -126,6 +126,11 @@ export function CourseForm({ courseId }: CourseFormProps) {
 
   const onPolygonComplete = useCallback((polygon: google.maps.Polygon) => {
     try {
+      // 기존 polygon이 있으면 제거
+      if (polygonRef.current) {
+        polygonRef.current.setMap(null);
+      }
+      
       polygonRef.current = polygon;
       const path = polygon.getPath();
       const coordinates: LatLng[] = [];
@@ -133,10 +138,14 @@ export function CourseForm({ courseId }: CourseFormProps) {
       if (path) {
         path.forEach((latLng) => {
           if (latLng) {
-            const lat = latLng.lat();
-            const lng = latLng.lng();
-            if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
-              coordinates.push({ lat, lng });
+            try {
+              const lat = latLng.lat();
+              const lng = latLng.lng();
+              if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
+                coordinates.push({ lat, lng });
+              }
+            } catch (err) {
+              console.warn('Error getting lat/lng:', err);
             }
           }
         });
@@ -250,7 +259,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
   }
 
   // center 계산 (안전하게 처리)
-  const getMapCenter = (): { lat: number; lng: number } => {
+  const getMapCenter = useCallback((): { lat: number; lng: number } => {
     if (path.length > 0) {
       const midIndex = Math.floor(path.length / 2);
       const midPoint = path[midIndex];
@@ -259,7 +268,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
       }
     }
     return defaultCenter;
-  };
+  }, [path]);
 
   const mapCenter = getMapCenter();
 
@@ -299,15 +308,15 @@ export function CourseForm({ courseId }: CourseFormProps) {
             fullscreenControl: true,
           }}
         >
-          {isLoaded && (
+          {isLoaded && typeof window !== 'undefined' && window.google && window.google.maps && (
             <DrawingManager
               onPolygonComplete={onPolygonComplete}
               options={{
-                drawingMode: google.maps.drawing.OverlayType.POLYGON,
+                drawingMode: window.google.maps.drawing.OverlayType.POLYGON,
                 drawingControl: true,
                 drawingControlOptions: {
-                  position: google.maps.ControlPosition.TOP_CENTER,
-                  drawingModes: [google.maps.drawing.OverlayType.POLYGON],
+                  position: window.google.maps.ControlPosition.TOP_CENTER,
+                  drawingModes: [window.google.maps.drawing.OverlayType.POLYGON],
                 },
                 polygonOptions: {
                   fillColor: '#0ea5e9',

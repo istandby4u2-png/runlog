@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
     const mood = formData.get('mood') as string;
     const meal = formData.get('meal') as string;
     const calories = formData.get('calories') as string;
+    const mealTimingHours = formData.get('meal_timing_hours') as string;
     const sleepHours = formData.get('sleep_hours') as string;
     const sleepQuality = formData.get('sleep_quality') as string;
     const imageFile = formData.get('image') as File | null;
@@ -100,6 +101,7 @@ export async function POST(request: NextRequest) {
       mood: mood || null,
       meal: meal || null,
       calories: calories ? parseInt(calories) : null,
+      meal_timing_hours: mealTimingHours ? parseFloat(mealTimingHours) : null,
       sleep_hours: sleepHours ? parseFloat(sleepHours) : null,
       sleep_quality: sleepQuality || null
     });

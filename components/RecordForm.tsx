@@ -25,6 +25,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
   const [mood, setMood] = useState('');
   const [meal, setMeal] = useState('');
   const [calories, setCalories] = useState<number | null>(null);
+  const [mealTimingHours, setMealTimingHours] = useState('');
   const [calculatingCalories, setCalculatingCalories] = useState(false);
   const [calorieError, setCalorieError] = useState<string | null>(null);
   const [sleepHours, setSleepHours] = useState('');
@@ -107,6 +108,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
       setMood(record.mood || '');
       setMeal(record.meal || '');
       setCalories(record.calories || null);
+      setMealTimingHours(record.meal_timing_hours?.toString() || '');
       setSleepHours(record.sleep_hours?.toString() || '');
       setSleepQuality(record.sleep_quality || '');
       setExistingImageUrl(record.image_url || null);
@@ -253,6 +255,9 @@ export function RecordForm({ recordId }: RecordFormProps) {
       }
       if (calories !== null) {
         formData.append('calories', calories.toString());
+      }
+      if (mealTimingHours) {
+        formData.append('meal_timing_hours', mealTimingHours);
       }
       if (sleepHours) {
         formData.append('sleep_hours', sleepHours);
@@ -407,7 +412,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Pre-run Meal */}
         <div className="lg:col-span-2">
           <label htmlFor="meal" className="block text-sm font-medium text-gray-700 mb-2">
@@ -451,6 +456,27 @@ export function RecordForm({ recordId }: RecordFormProps) {
               <span className="text-sm text-gray-400">-</span>
             )}
           </div>
+        </div>
+
+        {/* Hours Before Run */}
+        <div>
+          <label htmlFor="mealTimingHours" className="block text-sm font-medium text-gray-700 mb-2">
+            Hours Before
+          </label>
+          <input
+            type="number"
+            id="mealTimingHours"
+            value={mealTimingHours}
+            onChange={(e) => setMealTimingHours(e.target.value)}
+            step="0.5"
+            min="0"
+            max="24"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            placeholder="2"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Hours before run
+          </p>
         </div>
       </div>
 

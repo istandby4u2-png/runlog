@@ -42,6 +42,7 @@ export interface RunningRecord {
   mood?: string;
   meal?: string;
   calories?: number;
+  meal_timing_hours?: number;
   sleep_hours?: number;
   sleep_quality?: string;
   created_at: string;

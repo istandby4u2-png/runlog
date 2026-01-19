@@ -223,6 +223,11 @@ export function Feed() {
                   <div className="flex-1">
                     <p className="text-sm font-medium text-orange-800 mb-1">Pre-run Meal</p>
                     <p className="text-sm text-orange-700">{record.meal}</p>
+                    {record.meal_timing_hours && (
+                      <p className="text-xs text-orange-600 mt-1">
+                        🕐 {record.meal_timing_hours} {record.meal_timing_hours === 1 ? 'hour' : 'hours'} before
+                      </p>
+                    )}
                   </div>
                   {record.calories && (
                     <div className="ml-4 text-right">

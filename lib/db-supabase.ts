@@ -497,6 +497,7 @@ export const runningRecords = {
     mood?: string | null;
     meal?: string | null;
     calories?: number | null;
+    meal_timing_hours?: number | null;
     sleep_hours?: number | null;
     sleep_quality?: string | null;
   }) {
@@ -528,6 +529,7 @@ export const runningRecords = {
     mood?: string | null;
     meal?: string | null;
     calories?: number | null;
+    meal_timing_hours?: number | null;
     sleep_hours?: number | null;
     sleep_quality?: string | null;
   }) {

@@ -28,12 +28,33 @@ export async function calculateCalories(mealDescription: string): Promise<number
   console.log('🔑 GEMINI_API_KEY 상태:', process.env.GEMINI_API_KEY ? `설정됨 (길이: ${process.env.GEMINI_API_KEY.length})` : '❌ 설정되지 않음');
 
   try {
-    // 모델 초기화 (gemini-1.5-flash 사용 - gemini-pro는 더 이상 지원되지 않음)
-    const modelName = 'gemini-1.5-flash';
-    const model = genAI.getGenerativeModel({ 
-      model: modelName
-    });
-    console.log('✅ Gemini 모델 초기화 완료:', modelName);
+    // 여러 모델을 순서대로 시도
+    const modelOptions = [
+      'gemini-2.0-flash-exp',  // 최신 모델
+      'gemini-1.5-flash',      // 표준 모델
+      'gemini-1.5-pro',        // 프로 모델
+    ];
+    
+    let model;
+    let modelName = '';
+    let lastError;
+    
+    for (const modelOption of modelOptions) {
+      try {
+        model = genAI.getGenerativeModel({ model: modelOption });
+        modelName = modelOption;
+        console.log('✅ Gemini 모델 초기화 완료:', modelName);
+        break;
+      } catch (err: any) {
+        console.warn(`⚠️ ${modelOption} 모델 실패, 다음 모델 시도...`);
+        lastError = err;
+      }
+    }
+    
+    if (!model) {
+      console.error('❌ 모든 모델 초기화 실패');
+      throw lastError || new Error('사용 가능한 Gemini 모델이 없습니다');
+    }
 
     const prompt = `다음 식사 내용의 총 칼로리를 정확하게 계산해주세요. 숫자만 반환해주세요 (단위 없이, 소수점 없이 정수만).
 

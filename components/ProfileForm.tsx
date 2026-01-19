@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { User } from '@/types';
 import { Trash2 } from 'lucide-react';
+import { compressImage, validateFileSize, validateImageType } from '@/lib/image-utils';
 
 interface ProfileFormProps {
   user: User;
@@ -18,10 +19,35 @@ export function ProfileForm({ user: initialUser }: ProfileFormProps) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setImage(e.target.files[0]);
-      setRemoveImage(false);
+      const file = e.target.files[0];
+      
+      // 파일 타입 검증
+      if (!validateImageType(file)) {
+        setError('이미지 파일만 업로드 가능합니다 (JPEG, PNG, GIF, WebP)');
+        e.target.value = '';
+        return;
+      }
+      
+      // 파일 크기가 10MB를 초과하면 에러
+      if (file.size > 10 * 1024 * 1024) {
+        setError('이미지 크기는 10MB 이하여야 합니다');
+        e.target.value = '';
+        return;
+      }
+      
+      try {
+        // 이미지 압축 (500KB 이상이면 압축)
+        const compressedFile = await compressImage(file, 1920, 1920, 0.8);
+        setImage(compressedFile);
+        setRemoveImage(false);
+        setError(''); // 에러 메시지 초기화
+      } catch (err) {
+        console.error('이미지 압축 실패:', err);
+        setError('이미지 처리 중 오류가 발생했습니다');
+        e.target.value = '';
+      }
     }
   };
 

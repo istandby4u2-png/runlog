@@ -14,6 +14,11 @@ export interface Course {
   path_data: string; // JSON string of coordinates
   image_url?: string;
   distance?: number;
+  course_type?: string | null;
+  surface_type?: string | null;
+  elevation?: string | null;
+  traffic_lights?: string | null;
+  streetlights?: string | null;
   created_at: string;
   username?: string;
   user_profile_image_url?: string | null;

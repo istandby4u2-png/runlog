@@ -245,7 +245,7 @@ export const courses = {
     elevation: string | null = null,
     trafficLights: string | null = null,
     streetlights: string | null = null,
-    visibility: string = 'public'
+    visibility: Visibility = 'public'
   ) {
     if (!supabaseAdmin) {
       throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
@@ -540,6 +540,7 @@ export const runningRecords = {
     meal_timing_hours?: number | null;
     sleep_hours?: number | null;
     sleep_quality?: string | null;
+    visibility?: Visibility;
   }) {
     if (!supabaseAdmin) {
       throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');

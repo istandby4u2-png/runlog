@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { runningRecords } from '@/lib/db-supabase';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { uploadImage, deleteImage } from '@/lib/blob-storage';
+import { Visibility } from '@/types';
 
 export async function GET(
   request: NextRequest,
@@ -128,7 +129,7 @@ export async function PUT(
       meal_timing_hours: mealTimingHours ? parseFloat(mealTimingHours) : null,
       sleep_hours: sleepHours ? parseFloat(sleepHours) : null,
       sleep_quality: sleepQuality || null,
-      visibility: visibility as 'public' | 'loggers' | 'private'
+      visibility: visibility as Visibility
     });
 
     return NextResponse.json(

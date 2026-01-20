@@ -3,6 +3,7 @@ import { courses } from '@/lib/db-supabase';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { uploadImage, deleteImage } from '@/lib/blob-storage';
 import { supabaseAdmin } from '@/lib/supabase';
+import { Visibility } from '@/types';
 
 export async function GET(
   request: NextRequest,
@@ -142,7 +143,7 @@ export async function PUT(
       elevation: elevation || null,
       traffic_lights: trafficLights || null,
       streetlights: streetlights || null,
-      visibility
+      visibility: visibility as Visibility
     });
 
     return NextResponse.json(

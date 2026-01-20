@@ -3,6 +3,7 @@ import { runningRecords } from '@/lib/db-supabase';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { uploadImage } from '@/lib/blob-storage';
 import { supabaseAdmin } from '@/lib/supabase';
+import { Visibility } from '@/types';
 
 export async function GET(request: NextRequest) {
   try {
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
       meal_timing_hours: mealTimingHours ? parseFloat(mealTimingHours) : null,
       sleep_hours: sleepHours ? parseFloat(sleepHours) : null,
       sleep_quality: sleepQuality || null,
-      visibility: visibility as 'public' | 'loggers' | 'private'
+      visibility: visibility as Visibility
     });
 
     return NextResponse.json(

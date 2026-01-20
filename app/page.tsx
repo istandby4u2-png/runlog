@@ -7,14 +7,7 @@ import { Feed } from '@/components/Feed';
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
-  const cookieStore = cookies();
-  const token = cookieStore.get('token')?.value;
-  const isAuthenticated = token ? verifyToken(token) !== null : false;
-
-  if (!isAuthenticated) {
-    redirect('/login');
-  }
-
+  // Allow unauthenticated users to view public content
   return (
     <main className="container mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold mb-6">Running Feed</h1>

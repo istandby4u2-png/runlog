@@ -86,6 +86,7 @@ export const users = {
   async update(id: number, updates: {
     username?: string;
     profile_image_url?: string | null;
+    bio?: string | null;
   }) {
     if (!supabaseAdmin) {
       throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
@@ -102,6 +103,22 @@ export const users = {
       throw error;
     }
     return data;
+  },
+
+  async updatePassword(id: number, hashedPassword: string) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { error } = await supabaseAdmin
+      .from('users')
+      .update({ password: hashedPassword })
+      .eq('id', id);
+    
+    if (error) {
+      console.error('User password update error:', error);
+      throw error;
+    }
+    return true;
   }
 };
 
@@ -116,8 +133,18 @@ export const courses = {
       .select(`
         *,
         users:user_id (username, profile_image_url)
-      `)
-      .order('created_at', { ascending: false });
+      `);
+
+    // Visibility filtering
+    if (!userId) {
+      // Non-logged-in users: only public
+      query = query.eq('visibility', 'public');
+    } else {
+      // Logged-in users: public + loggers + own private
+      query = query.or(`visibility.eq.public,visibility.eq.loggers,and(visibility.eq.private,user_id.eq.${userId})`);
+    }
+
+    query = query.order('created_at', { ascending: false });
 
     if (userId) {
       // 좋아요 및 댓글 수를 포함한 쿼리
@@ -418,8 +445,18 @@ export const runningRecords = {
         *,
         users:user_id (username, profile_image_url),
         courses:course_id (title)
-      `)
-      .order('created_at', { ascending: false });
+      `);
+
+    // Visibility filtering
+    if (!userId) {
+      // Non-logged-in users: only public
+      query = query.eq('visibility', 'public');
+    } else {
+      // Logged-in users: public + loggers + own private
+      query = query.or(`visibility.eq.public,visibility.eq.loggers,and(visibility.eq.private,user_id.eq.${userId})`);
+    }
+
+    query = query.order('created_at', { ascending: false });
 
     const { data, error } = await query;
     if (error) {

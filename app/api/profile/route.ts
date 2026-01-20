@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
       username: user.username,
       email: user.email,
       profile_image_url: user.profile_image_url || null,
+      bio: user.bio || null,
       created_at: user.created_at
     });
   } catch (error: any) {
@@ -69,6 +70,7 @@ export async function PUT(request: NextRequest) {
 
     const formData = await request.formData();
     const username = formData.get('username') as string;
+    const bio = formData.get('bio') as string;
     const imageFile = formData.get('image') as File | null;
     const removeImage = formData.get('remove_image') === 'true';
 
@@ -109,9 +111,12 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    const updates: { username?: string; profile_image_url?: string | null } = {};
+    const updates: { username?: string; profile_image_url?: string | null; bio?: string | null } = {};
     if (username && username.trim()) {
       updates.username = username.trim();
+    }
+    if (bio !== null && bio !== undefined) {
+      updates.bio = bio.trim() || null;
     }
     if (profileImageUrl !== undefined) {
       updates.profile_image_url = profileImageUrl;

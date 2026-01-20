@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Course, RunningRecord } from '@/types';
+import { Course, RunningRecord, Visibility } from '@/types';
 import { compressImage, validateFileSize, validateImageType } from '@/lib/image-utils';
 
 interface RecordFormProps {
@@ -30,6 +30,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
   const [calorieError, setCalorieError] = useState<string | null>(null);
   const [sleepHours, setSleepHours] = useState('');
   const [sleepQuality, setSleepQuality] = useState('');
+  const [visibility, setVisibility] = useState<Visibility>('public');
   const [courses, setCourses] = useState<Course[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -111,6 +112,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
       setMealTimingHours(record.meal_timing_hours?.toString() || '');
       setSleepHours(record.sleep_hours?.toString() || '');
       setSleepQuality(record.sleep_quality || '');
+      setVisibility(record.visibility || 'public');
       setExistingImageUrl(record.image_url || null);
     } catch (error) {
       console.error('Failed to fetch record:', error);
@@ -265,6 +267,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
       if (sleepQuality) {
         formData.append('sleep_quality', sleepQuality);
       }
+      formData.append('visibility', visibility);
       if (removeImage) {
         formData.append('remove_image', 'true');
       }
@@ -373,7 +376,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div>
           <label htmlFor="weather" className="block text-sm font-medium text-gray-700 mb-2">
             Weather
@@ -408,6 +411,21 @@ export function RecordForm({ recordId }: RecordFormProps) {
                 {option.label}
               </option>
             ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="visibility" className="block text-sm font-medium text-gray-700 mb-2">
+            Visibility
+          </label>
+          <select
+            id="visibility"
+            value={visibility}
+            onChange={(e) => setVisibility(e.target.value as Visibility)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
+          >
+            <option value="public">🌍 Public</option>
+            <option value="loggers">👥 Loggers Only</option>
+            <option value="private">🔒 Private</option>
           </select>
         </div>
       </div>

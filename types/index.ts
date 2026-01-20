@@ -1,8 +1,11 @@
+export type Visibility = 'public' | 'loggers' | 'private';
+
 export interface User {
   id: number;
   username: string;
   email: string;
   profile_image_url?: string | null;
+  bio?: string | null;
   created_at: string;
 }
 
@@ -19,6 +22,7 @@ export interface Course {
   elevation?: string | null;
   traffic_lights?: string | null;
   streetlights?: string | null;
+  visibility?: Visibility;
   created_at: string;
   username?: string;
   user_profile_image_url?: string | null;
@@ -45,6 +49,7 @@ export interface RunningRecord {
   meal_timing_hours?: number;
   sleep_hours?: number;
   sleep_quality?: string;
+  visibility?: Visibility;
   created_at: string;
   username?: string;
   user_profile_image_url?: string | null;

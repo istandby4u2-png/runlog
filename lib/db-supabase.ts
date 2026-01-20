@@ -1,4 +1,5 @@
 import { supabaseAdmin } from './supabase';
+import { Visibility } from '@/types';
 
 /**
  * Supabase 데이터베이스 헬퍼 함수들

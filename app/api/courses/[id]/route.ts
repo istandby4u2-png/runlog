@@ -92,6 +92,7 @@ export async function PUT(
     const elevation = formData.get('elevation') as string;
     const trafficLights = formData.get('traffic_lights') as string;
     const streetlights = formData.get('streetlights') as string;
+    const visibility = (formData.get('visibility') as string) || 'public';
     const imageFile = formData.get('image') as File | null;
     const removeImage = formData.get('remove_image') === 'true';
 
@@ -140,7 +141,8 @@ export async function PUT(
       surface_type: surfaceType || null,
       elevation: elevation || null,
       traffic_lights: trafficLights || null,
-      streetlights: streetlights || null
+      streetlights: streetlights || null,
+      visibility
     });
 
     return NextResponse.json(

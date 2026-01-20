@@ -217,7 +217,8 @@ export const courses = {
     surfaceType: string | null = null,
     elevation: string | null = null,
     trafficLights: string | null = null,
-    streetlights: string | null = null
+    streetlights: string | null = null,
+    visibility: string = 'public'
   ) {
     if (!supabaseAdmin) {
       throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
@@ -235,7 +236,8 @@ export const courses = {
         surface_type: surfaceType,
         elevation,
         traffic_lights: trafficLights,
-        streetlights
+        streetlights,
+        visibility
       })
       .select()
       .single();
@@ -256,6 +258,7 @@ export const courses = {
     course_type?: string | null;
     surface_type?: string | null;
     elevation?: string | null;
+    visibility?: string;
     traffic_lights?: string | null;
     streetlights?: string | null;
   }) {

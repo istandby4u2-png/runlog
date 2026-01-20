@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
     const elevation = formData.get('elevation') as string;
     const trafficLights = formData.get('traffic_lights') as string;
     const streetlights = formData.get('streetlights') as string;
+    const visibility = (formData.get('visibility') as string) || 'public';
     const imageFile = formData.get('image') as File | null;
 
     if (!title || !pathData) {
@@ -105,7 +106,8 @@ export async function POST(request: NextRequest) {
       surfaceType || null,
       elevation || null,
       trafficLights || null,
-      streetlights || null
+      streetlights || null,
+      visibility
     );
 
     return NextResponse.json(

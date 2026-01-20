@@ -196,7 +196,7 @@ export function Feed() {
               </Link>
             )}
 
-            {(record.distance || record.duration) && (
+            {(record.distance || record.duration || record.burned_calories) && (
               <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
                 {record.distance && (
                   <span className="flex items-center gap-1">
@@ -208,6 +208,11 @@ export function Feed() {
                   <span className="flex items-center gap-1">
                     <Clock className="w-4 h-4" />
                     {record.duration}분
+                  </span>
+                )}
+                {record.burned_calories && (
+                  <span className="flex items-center gap-1 font-medium text-black">
+                    🔥 -{record.burned_calories.toLocaleString()} kcal
                   </span>
                 )}
               </div>

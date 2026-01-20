@@ -88,6 +88,9 @@ export const users = {
     username?: string;
     profile_image_url?: string | null;
     bio?: string | null;
+    height?: number | null;
+    weight?: number | null;
+    gender?: 'male' | 'female' | 'other' | null;
   }) {
     if (!supabaseAdmin) {
       throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
@@ -539,6 +542,7 @@ export const runningRecords = {
     meal?: string | null;
     calories?: number | null;
     meal_timing_hours?: number | null;
+    burned_calories?: number | null;
     sleep_hours?: number | null;
     sleep_quality?: string | null;
     visibility?: Visibility;
@@ -572,6 +576,7 @@ export const runningRecords = {
     meal?: string | null;
     calories?: number | null;
     meal_timing_hours?: number | null;
+    burned_calories?: number | null;
     sleep_hours?: number | null;
     sleep_quality?: string | null;
     visibility?: Visibility | null;

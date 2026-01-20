@@ -14,6 +14,9 @@ export function ProfileEditForm({ user }: ProfileEditFormProps) {
   const router = useRouter();
   const [username, setUsername] = useState(user.username);
   const [bio, setBio] = useState(user.bio || '');
+  const [height, setHeight] = useState(user.height?.toString() || '');
+  const [weight, setWeight] = useState(user.weight?.toString() || '');
+  const [gender, setGender] = useState<'male' | 'female' | 'other' | ''>(user.gender || '');
   const [image, setImage] = useState<File | null>(null);
   const [removeImage, setRemoveImage] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -66,6 +69,9 @@ export function ProfileEditForm({ user }: ProfileEditFormProps) {
       const formData = new FormData();
       formData.append('username', username);
       formData.append('bio', bio);
+      formData.append('height', height);
+      formData.append('weight', weight);
+      formData.append('gender', gender);
       
       if (image) {
         formData.append('image', image);
@@ -223,6 +229,70 @@ export function ProfileEditForm({ user }: ProfileEditFormProps) {
           />
           <p className="mt-1 text-xs text-gray-500">
             {bio.length}/500 characters
+          </p>
+        </div>
+
+        {/* Physical Profile (Private) */}
+        <div className="mb-4 p-4 border border-gray-200 rounded bg-gray-50">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-black">Physical Profile</h3>
+            <p className="text-xs text-gray-600 italic">🔒 해당 정보는 나만 볼 수 있습니다.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Height */}
+            <div>
+              <label htmlFor="height" className="block text-sm font-medium text-gray-700 mb-1">
+                Height (cm)
+              </label>
+              <input
+                type="number"
+                id="height"
+                value={height}
+                onChange={(e) => setHeight(e.target.value)}
+                placeholder="170"
+                min="0"
+                step="0.1"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-black focus:border-black"
+              />
+            </div>
+
+            {/* Weight */}
+            <div>
+              <label htmlFor="weight" className="block text-sm font-medium text-gray-700 mb-1">
+                Weight (kg)
+              </label>
+              <input
+                type="number"
+                id="weight"
+                value={weight}
+                onChange={(e) => setWeight(e.target.value)}
+                placeholder="65"
+                min="0"
+                step="0.1"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-black focus:border-black"
+              />
+            </div>
+
+            {/* Gender */}
+            <div>
+              <label htmlFor="gender" className="block text-sm font-medium text-gray-700 mb-1">
+                Gender
+              </label>
+              <select
+                id="gender"
+                value={gender}
+                onChange={(e) => setGender(e.target.value as 'male' | 'female' | 'other' | '')}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-black focus:border-black"
+              >
+                <option value="">Select</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            This information is used to calculate calories burned during runs.
           </p>
         </div>
 

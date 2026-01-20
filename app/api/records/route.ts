@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
     const meal = formData.get('meal') as string;
     const calories = formData.get('calories') as string;
     const mealTimingHours = formData.get('meal_timing_hours') as string;
+    const burnedCalories = formData.get('burned_calories') as string;
     const sleepHours = formData.get('sleep_hours') as string;
     const sleepQuality = formData.get('sleep_quality') as string;
     const visibility = (formData.get('visibility') as string) || 'public';
@@ -104,6 +105,7 @@ export async function POST(request: NextRequest) {
       meal: meal || null,
       calories: calories ? parseInt(calories) : null,
       meal_timing_hours: mealTimingHours ? parseFloat(mealTimingHours) : null,
+      burned_calories: burnedCalories ? parseInt(burnedCalories) : null,
       sleep_hours: sleepHours ? parseFloat(sleepHours) : null,
       sleep_quality: sleepQuality || null,
       visibility: visibility as Visibility

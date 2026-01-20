@@ -36,6 +36,9 @@ export async function GET(request: NextRequest) {
       email: user.email,
       profile_image_url: user.profile_image_url || null,
       bio: user.bio || null,
+      height: user.height || null,
+      weight: user.weight || null,
+      gender: user.gender || null,
       created_at: user.created_at
     });
   } catch (error: any) {
@@ -71,6 +74,9 @@ export async function PUT(request: NextRequest) {
     const formData = await request.formData();
     const username = formData.get('username') as string;
     const bio = formData.get('bio') as string;
+    const height = formData.get('height') as string;
+    const weight = formData.get('weight') as string;
+    const gender = formData.get('gender') as string;
     const imageFile = formData.get('image') as File | null;
     const removeImage = formData.get('remove_image') === 'true';
 
@@ -111,12 +117,28 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    const updates: { username?: string; profile_image_url?: string | null; bio?: string | null } = {};
+    const updates: { 
+      username?: string; 
+      profile_image_url?: string | null; 
+      bio?: string | null;
+      height?: number | null;
+      weight?: number | null;
+      gender?: 'male' | 'female' | 'other' | null;
+    } = {};
     if (username && username.trim()) {
       updates.username = username.trim();
     }
     if (bio !== null && bio !== undefined) {
       updates.bio = bio.trim() || null;
+    }
+    if (height !== null && height !== undefined) {
+      updates.height = height.trim() ? parseFloat(height) : null;
+    }
+    if (weight !== null && weight !== undefined) {
+      updates.weight = weight.trim() ? parseFloat(weight) : null;
+    }
+    if (gender !== null && gender !== undefined) {
+      updates.gender = gender.trim() ? (gender as 'male' | 'female' | 'other') : null;
     }
     if (profileImageUrl !== undefined) {
       updates.profile_image_url = profileImageUrl;

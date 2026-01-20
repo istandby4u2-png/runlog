@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Course, RunningRecord, Visibility } from '@/types';
+import { Course, RunningRecord, Visibility, User } from '@/types';
 import { compressImage, validateFileSize, validateImageType } from '@/lib/image-utils';
+import { calculateBurnedCalories, canCalculateBurnedCalories } from '@/lib/calorie-calculator';
 
 interface RecordFormProps {
   recordId?: number;
@@ -28,6 +29,8 @@ export function RecordForm({ recordId }: RecordFormProps) {
   const [mealTimingHours, setMealTimingHours] = useState('');
   const [calculatingCalories, setCalculatingCalories] = useState(false);
   const [calorieError, setCalorieError] = useState<string | null>(null);
+  const [burnedCalories, setBurnedCalories] = useState<number | null>(null);
+  const [userProfile, setUserProfile] = useState<User | null>(null);
   const [sleepHours, setSleepHours] = useState('');
   const [sleepQuality, setSleepQuality] = useState('');
   const [visibility, setVisibility] = useState<Visibility>('public');
@@ -74,10 +77,33 @@ export function RecordForm({ recordId }: RecordFormProps) {
 
   useEffect(() => {
     fetchCourses();
+    fetchUserProfile();
     if (isEditMode && recordId) {
       fetchRecord();
     }
   }, [isEditMode, recordId]);
+
+  // Auto-calculate burned calories when distance or duration changes
+  useEffect(() => {
+    if (userProfile?.weight && distance && duration) {
+      const dist = parseFloat(distance);
+      const dur = parseFloat(duration);
+      
+      if (canCalculateBurnedCalories(dist, dur, userProfile.weight)) {
+        const burned = calculateBurnedCalories({
+          distance: dist,
+          duration: dur,
+          weight: userProfile.weight,
+          gender: userProfile.gender
+        });
+        setBurnedCalories(burned);
+      } else {
+        setBurnedCalories(null);
+      }
+    } else {
+      setBurnedCalories(null);
+    }
+  }, [distance, duration, userProfile]);
 
   const fetchCourses = async () => {
     try {
@@ -86,6 +112,18 @@ export function RecordForm({ recordId }: RecordFormProps) {
       setCourses(data);
     } catch (error) {
       console.error('Failed to fetch courses:', error);
+    }
+  };
+
+  const fetchUserProfile = async () => {
+    try {
+      const response = await fetch('/api/profile');
+      if (response.ok) {
+        const data: User = await response.json();
+        setUserProfile(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch user profile:', error);
     }
   };
 
@@ -110,6 +148,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
       setMeal(record.meal || '');
       setCalories(record.calories || null);
       setMealTimingHours(record.meal_timing_hours?.toString() || '');
+      setBurnedCalories(record.burned_calories || null);
       setSleepHours(record.sleep_hours?.toString() || '');
       setSleepQuality(record.sleep_quality || '');
       setVisibility(record.visibility || 'public');
@@ -261,6 +300,9 @@ export function RecordForm({ recordId }: RecordFormProps) {
       if (mealTimingHours) {
         formData.append('meal_timing_hours', mealTimingHours);
       }
+      if (burnedCalories !== null) {
+        formData.append('burned_calories', burnedCalories.toString());
+      }
       if (sleepHours) {
         formData.append('sleep_hours', sleepHours);
       }
@@ -348,7 +390,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
         </select>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label htmlFor="distance" className="block text-sm font-medium text-gray-700 mb-2">
             Distance (km)
@@ -373,6 +415,23 @@ export function RecordForm({ recordId }: RecordFormProps) {
             onChange={(e) => setDuration(e.target.value)}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
           />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Burned Calories
+          </label>
+          <div className="h-[42px] flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg bg-white">
+            {burnedCalories !== null ? (
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-bold text-black">-{burnedCalories.toLocaleString()}</span>
+                <span className="text-sm font-medium text-gray-600">kcal</span>
+              </div>
+            ) : (
+              <span className="text-sm text-gray-400">
+                {!userProfile?.weight ? 'Set weight in profile' : '-'}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -467,7 +526,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
               </div>
             ) : calories !== null ? (
               <div className="flex items-center gap-2">
-                <span className="text-2xl font-bold text-black">{calories.toLocaleString()}</span>
+                <span className="text-lg font-bold text-black">{calories.toLocaleString()}</span>
                 <span className="text-sm font-medium text-gray-600">kcal</span>
               </div>
             ) : (

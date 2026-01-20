@@ -6,6 +6,9 @@ export interface User {
   email: string;
   profile_image_url?: string | null;
   bio?: string | null;
+  height?: number | null; // in cm (private)
+  weight?: number | null; // in kg (private)
+  gender?: 'male' | 'female' | 'other' | null; // (private)
   created_at: string;
 }
 
@@ -45,8 +48,9 @@ export interface RunningRecord {
   weather?: string;
   mood?: string;
   meal?: string;
-  calories?: number;
+  calories?: number; // Pre-run meal calories
   meal_timing_hours?: number;
+  burned_calories?: number; // Calories burned during run
   sleep_hours?: number;
   sleep_quality?: string;
   visibility?: Visibility;

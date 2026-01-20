@@ -125,6 +125,11 @@ export default async function RecordDetailPage({
                 </span>
               </div>
             )}
+            {record.burned_calories && (
+              <div className="flex items-center gap-1 font-medium text-black">
+                <span>🔥 -{record.burned_calories.toLocaleString()} kcal</span>
+              </div>
+            )}
             {record.course_title && (
               <Link
                 href={`/courses/${record.course_id}`}

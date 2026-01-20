@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { GoogleMap, useJsApiLoader, DrawingManager, Polygon } from '@react-google-maps/api';
-import { LatLng } from '@/types';
+import { LatLng, Visibility } from '@/types';
 import { compressImage, validateFileSize, validateImageType } from '@/lib/image-utils';
 
 const libraries: ("drawing")[] = ["drawing"];
@@ -36,6 +36,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
   const [elevation, setElevation] = useState('');
   const [trafficLights, setTrafficLights] = useState('');
   const [streetlights, setStreetlights] = useState('');
+  const [visibility, setVisibility] = useState<Visibility>('public');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingCourse, setLoadingCourse] = useState(isEditMode);
@@ -76,6 +77,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
       setElevation(course.elevation || null || '');
       setTrafficLights(course.traffic_lights || null || '');
       setStreetlights(course.streetlights || null || '');
+      setVisibility(course.visibility || 'public');
       
       // path_data 파싱 (안전하게 처리)
       if (course.path_data) {
@@ -262,6 +264,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
       if (elevation) formData.append('elevation', elevation);
       if (trafficLights) formData.append('traffic_lights', trafficLights);
       if (streetlights) formData.append('streetlights', streetlights);
+      formData.append('visibility', visibility);
       if (image) {
         formData.append('image', image);
       }
@@ -523,6 +526,22 @@ export function CourseForm({ courseId }: CourseFormProps) {
               <option value="None">None</option>
               <option value="Moderate">Moderate</option>
               <option value="Bright">Bright</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="visibility" className="block text-sm font-medium text-gray-700 mb-2">
+              Visibility
+            </label>
+            <select
+              id="visibility"
+              value={visibility}
+              onChange={(e) => setVisibility(e.target.value as Visibility)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
+            >
+              <option value="public">🌍 Public</option>
+              <option value="loggers">👥 Loggers Only</option>
+              <option value="private">🔒 Private</option>
             </select>
           </div>
         </div>

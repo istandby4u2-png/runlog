@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
     const mealTimingHours = formData.get('meal_timing_hours') as string;
     const sleepHours = formData.get('sleep_hours') as string;
     const sleepQuality = formData.get('sleep_quality') as string;
+    const visibility = (formData.get('visibility') as string) || 'public';
     const imageFile = formData.get('image') as File | null;
 
     if (!title || !recordDate) {
@@ -103,7 +104,8 @@ export async function POST(request: NextRequest) {
       calories: calories ? parseInt(calories) : null,
       meal_timing_hours: mealTimingHours ? parseFloat(mealTimingHours) : null,
       sleep_hours: sleepHours ? parseFloat(sleepHours) : null,
-      sleep_quality: sleepQuality || null
+      sleep_quality: sleepQuality || null,
+      visibility: visibility as 'public' | 'loggers' | 'private'
     });
 
     return NextResponse.json(

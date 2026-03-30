@@ -141,8 +141,8 @@ export const courses = {
 
     // Visibility filtering
     if (!userId) {
-      // Non-logged-in users: public + loggers
-      query = query.or('visibility.eq.public,visibility.eq.loggers');
+      // Non-logged-in users: only public
+      query = query.eq('visibility', 'public');
     } else {
       // Logged-in users: public + loggers + own private
       query = query.or(`visibility.eq.public,visibility.eq.loggers,and(visibility.eq.private,user_id.eq.${userId})`);

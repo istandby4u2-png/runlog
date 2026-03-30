@@ -2,14 +2,20 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LogOut } from 'lucide-react';
+import { LogOut, LogIn } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 export function Header() {
   const pathname = usePathname();
   const router = useRouter();
-  
-  // 로그인/회원가입 페이지에서는 헤더를 표시하지 않음
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    const hasCookie = document.cookie.split(';').some(c => c.trim().startsWith('token='));
+    setIsLoggedIn(hasCookie);
+  }, [pathname]);
+
   const isAuthPage = pathname === '/login' || pathname === '/register';
   
   if (isAuthPage) {
@@ -19,6 +25,7 @@ export function Header() {
   const handleLogout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
+      setIsLoggedIn(false);
       router.push('/login');
       router.refresh();
     } catch (error) {
@@ -35,14 +42,31 @@ export function Header() {
               RunLog
             </span>
           </Link>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-1 px-3 py-1.5 bg-white border border-black text-black hover:bg-black hover:text-white transition-colors text-sm rounded"
-            aria-label="Logout"
-          >
-            <LogOut className="w-4 h-4" />
-            <span className="hidden sm:inline">Logout</span>
-          </button>
+          {isLoggedIn ? (
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1 px-3 py-1.5 bg-white border border-black text-black hover:bg-black hover:text-white transition-colors text-sm rounded"
+              aria-label="Logout"
+            >
+              <LogOut className="w-4 h-4" />
+              <span
+                className="hidden sm:inline"
+                data-i18n="header.logout"
+              >
+                로그아웃
+              </span>
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              className="flex items-center gap-1 px-3 py-1.5 bg-white border border-black text-black hover:bg-black hover:text-white transition-colors text-sm rounded"
+            >
+              <LogIn className="w-4 h-4" />
+              <span className="hidden sm:inline">
+                로그인
+              </span>
+            </Link>
+          )}
         </div>
       </div>
     </header>

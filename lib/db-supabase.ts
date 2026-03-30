@@ -141,8 +141,8 @@ export const courses = {
 
     // Visibility filtering
     if (!userId) {
-      // Non-logged-in users: only public
-      query = query.eq('visibility', 'public');
+      // Non-logged-in users: public + loggers
+      query = query.or('visibility.eq.public,visibility.eq.loggers');
     } else {
       // Logged-in users: public + loggers + own private
       query = query.or(`visibility.eq.public,visibility.eq.loggers,and(visibility.eq.private,user_id.eq.${userId})`);
@@ -150,16 +150,13 @@ export const courses = {
 
     query = query.order('created_at', { ascending: false });
 
-    if (userId) {
-      // 좋아요 및 댓글 수를 포함한 쿼리
-      // Supabase는 서브쿼리를 직접 지원하지 않으므로 별도로 조회
-      const { data, error } = await query;
-      if (error) {
-        console.error('Courses findAll error:', error);
-        return [];
-      }
+    const { data, error } = await query;
+    if (error) {
+      console.error('Courses findAll error:', error);
+      return [];
+    }
 
-      // 각 코스에 대해 좋아요 수, 댓글 수, 좋아요 여부, 소유자 여부 조회
+    if (userId) {
       const coursesWithStats = await Promise.all(
         (data || []).map(async (course) => {
           const [likesCount, commentsCount, isLiked, isOwner] = await Promise.all([
@@ -183,12 +180,6 @@ export const courses = {
 
       return coursesWithStats;
     } else {
-      const { data, error } = await query;
-      if (error) {
-        console.error('Courses findAll error:', error);
-        return [];
-      }
-
       return (data || []).map((course) => ({
         ...course,
         username: (course.users as any)?.username,

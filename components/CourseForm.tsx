@@ -2,9 +2,10 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { GoogleMap, useJsApiLoader, DrawingManager, Polygon } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, DrawingManager, Polygon, Polyline } from '@react-google-maps/api';
 import { LatLng, Visibility } from '@/types';
 import { compressImage, validateFileSize, validateImageType } from '@/lib/image-utils';
+import { parseGpxToPath } from '@/lib/gpx';
 
 const libraries: ("drawing")[] = ["drawing"];
 
@@ -40,7 +41,11 @@ export function CourseForm({ courseId }: CourseFormProps) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingCourse, setLoadingCourse] = useState(isEditMode);
+  /** GPX 업로드 경로는 폴리라인, 지도 도구로 그린 도형은 폴리곤으로 표시 */
+  const [pathSource, setPathSource] = useState<'polygon' | 'gpx'>('polygon');
   const polygonRef = useRef<google.maps.Polygon | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const [mapVersion, setMapVersion] = useState(0);
 
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
@@ -109,6 +114,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
             
             if (validPath.length > 0) {
               setPath(validPath);
+              setPathSource('polygon');
             } else {
               console.warn('No valid coordinates found in path_data');
               setPath([]);
@@ -140,11 +146,21 @@ export function CourseForm({ courseId }: CourseFormProps) {
   }, [isEditMode, courseId]);
 
   const onLoad = useCallback((map: google.maps.Map) => {
-    // 맵 로드 완료
+    mapRef.current = map;
+    setMapVersion((v) => v + 1);
   }, []);
 
+  useEffect(() => {
+    if (!isLoaded || path.length < 2 || pathSource !== 'gpx') return;
+    const map = mapRef.current;
+    if (!map) return;
+    const bounds = new google.maps.LatLngBounds();
+    path.forEach((p) => bounds.extend(p));
+    map.fitBounds(bounds, 48);
+  }, [path, pathSource, isLoaded, mapVersion]);
+
   const onUnmount = useCallback(() => {
-    // 맵 언마운트
+    mapRef.current = null;
   }, []);
 
   const onPolygonComplete = useCallback((polygon: google.maps.Polygon) => {
@@ -175,6 +191,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
       }
 
       if (coordinates.length > 0) {
+        setPathSource('polygon');
         setPath(coordinates);
       }
     } catch (error) {
@@ -182,6 +199,27 @@ export function CourseForm({ courseId }: CourseFormProps) {
       setError('Failed to process course path. Please try again.');
     }
   }, []);
+
+  const handleGpxChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError('');
+    try {
+      const text = await file.text();
+      const points = parseGpxToPath(text);
+      if (polygonRef.current) {
+        polygonRef.current.setMap(null);
+        polygonRef.current = null;
+      }
+      setPathSource('gpx');
+      setPath(points);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'GPX를 불러오지 못했습니다.';
+      setError(message);
+    } finally {
+      e.target.value = '';
+    }
+  };
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -247,7 +285,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
     }
 
     if (path.length < 2) {
-      setError('지도에 코스 경로를 그려주세요.');
+      setError('지도에 코스 경로를 그리거나 GPX 파일을 업로드해 주세요.');
       return;
     }
 
@@ -369,11 +407,24 @@ export function CourseForm({ courseId }: CourseFormProps) {
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          코스 경로 그리기 *
+          코스 경로 *
         </label>
         <p className="text-sm text-gray-500 mb-2">
-          지도에서 다각형 도구를 사용하여 코스 경로를 그려주세요.
+          GPX 파일을 올리면 경로가 지도에 표시되거나, 지도에서 다각형 도구로 직접 그릴 수 있습니다.
         </p>
+        <div className="mb-3">
+          <input
+            type="file"
+            accept=".gpx,application/gpx+xml,application/xml"
+            onChange={handleGpxChange}
+            className="block w-full text-sm text-gray-600 file:mr-3 file:rounded file:border file:border-black file:bg-white file:px-3 file:py-1.5 file:text-sm file:text-black hover:file:bg-black hover:file:text-white"
+          />
+          {pathSource === 'gpx' && path.length >= 2 && (
+            <p className="mt-1 text-xs text-gray-500">
+              GPX 경로가 적용되었습니다. 다른 GPX로 바꾸거나 아래 도구로 다각형을 그리면 덮어씁니다.
+            </p>
+          )}
+        </div>
         {isLoaded ? (
           <GoogleMap
             mapContainerStyle={containerStyle}
@@ -410,7 +461,7 @@ export function CourseForm({ courseId }: CourseFormProps) {
                 }}
               />
             )}
-            {path.length > 0 && (
+            {path.length > 0 && pathSource === 'polygon' && (
               <Polygon
                 paths={path}
                 options={{
@@ -420,6 +471,16 @@ export function CourseForm({ courseId }: CourseFormProps) {
                   strokeColor: '#0284c7',
                   editable: true,
                   draggable: false,
+                }}
+              />
+            )}
+            {path.length > 1 && pathSource === 'gpx' && (
+              <Polyline
+                path={path}
+                options={{
+                  strokeWeight: 4,
+                  strokeColor: '#0284c7',
+                  strokeOpacity: 1,
                 }}
               />
             )}

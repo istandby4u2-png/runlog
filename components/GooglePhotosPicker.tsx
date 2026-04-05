@@ -199,6 +199,9 @@ export function GooglePhotosPicker({
     return null;
   }
 
+  const origin =
+    typeof window !== 'undefined' ? window.location.origin : 'https://runlog.life';
+
   return (
     <>
       <button
@@ -233,8 +236,15 @@ export function GooglePhotosPicker({
               </button>
             </div>
 
-            <div className="p-3 text-xs text-gray-500 border-b border-gray-100">
-              Google 계정으로 사진 라이브러리 접근 권한을 허용하면 최근 사진이 표시됩니다.
+            <div className="p-3 text-xs text-gray-500 border-b border-gray-100 space-y-1">
+              <p>Google 계정으로 사진 라이브러리 접근 권한을 허용하면 최근 사진이 표시됩니다.</p>
+              <p className="text-gray-600">
+                <strong className="text-gray-800">400 redirect_uri_mismatch</strong>가 나오면 Google Cloud → 사용자 인증 정보 → 해당{' '}
+                <strong>웹 클라이언트</strong>에서 <strong>승인된 JavaScript 원본</strong>과{' '}
+                <strong>승인된 리디렉션 URI</strong> 모두에{' '}
+                <code className="bg-gray-100 px-1 rounded break-all">{origin}</code>를 추가하고, 같은 값에{' '}
+                <code className="bg-gray-100 px-1 rounded">{origin}/</code>도 함께 넣어 보세요. 저장 후 1~5분 뒤 다시 시도합니다.
+              </p>
             </div>
 
             {pickerError && (

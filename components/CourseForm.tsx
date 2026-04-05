@@ -4,8 +4,9 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { GoogleMap, useJsApiLoader, DrawingManager, Polygon, Polyline } from '@react-google-maps/api';
 import { LatLng, Visibility } from '@/types';
-import { compressImage, validateFileSize, validateImageType } from '@/lib/image-utils';
+import { compressImage, validateImageType } from '@/lib/image-utils';
 import { parseGpxToPath } from '@/lib/gpx';
+import { GooglePhotosPicker } from '@/components/GooglePhotosPicker';
 
 const libraries: ("drawing")[] = ["drawing"];
 
@@ -221,35 +222,30 @@ export function CourseForm({ courseId }: CourseFormProps) {
     }
   };
 
-  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      
-      // 파일 타입 검증
-      if (!validateImageType(file)) {
-        setError('이미지 파일만 업로드 가능합니다 (JPEG, PNG, GIF, WebP)');
-        e.target.value = '';
-        return;
-      }
-      
-      // 파일 크기가 10MB를 초과하면 에러
-      if (file.size > 10 * 1024 * 1024) {
-        setError('이미지 크기는 10MB 이하여야 합니다');
-        e.target.value = '';
-        return;
-      }
-      
-      try {
-        // 이미지 압축 (500KB 이상이면 압축)
-        const compressedFile = await compressImage(file, 1920, 1920, 0.8);
-        setImage(compressedFile);
-        setError(''); // 에러 메시지 초기화
-      } catch (err) {
-        console.error('이미지 압축 실패:', err);
-        setError('이미지 처리 중 오류가 발생했습니다');
-        e.target.value = '';
-      }
+  const applyImageFile = async (file: File) => {
+    if (!validateImageType(file)) {
+      setError('이미지 파일만 업로드 가능합니다 (JPEG, PNG, GIF, WebP)');
+      return;
     }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('이미지 크기는 10MB 이하여야 합니다');
+      return;
+    }
+    try {
+      const compressedFile = await compressImage(file, 1920, 1920, 0.8);
+      setImage(compressedFile);
+      setError('');
+    } catch (err) {
+      console.error('이미지 압축 실패:', err);
+      setError('이미지 처리 중 오류가 발생했습니다');
+    }
+  };
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    await applyImageFile(file);
   };
 
   const calculateDistance = (coordinates: LatLng[]): number => {
@@ -644,13 +640,21 @@ export function CourseForm({ courseId }: CourseFormProps) {
           </div>
         )}
         {(!existingImageUrl || removeImage) && (
-          <input
-            type="file"
-            id="image"
-            accept="image/*"
-            onChange={handleImageChange}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
-          />
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-stretch">
+            <input
+              type="file"
+              id="image"
+              accept="image/*"
+              onChange={handleImageChange}
+              className="w-full flex-1 min-w-0 px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-black focus:border-black"
+            />
+            <GooglePhotosPicker
+              className="w-full sm:w-auto shrink-0"
+              disabled={loading}
+              onFileReady={applyImageFile}
+              onError={(msg) => setError(msg)}
+            />
+          </div>
         )}
         {image && (
           <p className="mt-2 text-sm text-gray-600">{image.name}</p>

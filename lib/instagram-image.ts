@@ -41,30 +41,10 @@ export async function generateInstagramCard(
     ? activity.startTimeLocal.slice(0, 10).replace(/-/g, '.')
     : new Date().toISOString().slice(0, 10).replace(/-/g, '.');
 
-  const lines: string[] = [];
-  if (activity.distanceKm > 0)
-    lines.push(`${activity.distanceKm} km`);
-  if (activity.durationMinutes > 0)
-    lines.push(formatDuration(activity.durationMinutes));
-  if (activity.averagePaceMinPerKm)
-    lines.push(`Pace ${formatPace(activity.averagePaceMinPerKm)} /km`);
-  if (activity.calories > 0)
-    lines.push(`${activity.calories} kcal`);
-  if (activity.averageHR > 0)
-    lines.push(`❤️ ${activity.averageHR} bpm`);
-
-  const statsBlock = lines
-    .map(
-      (line, i) =>
-        `<text x="540" y="${440 + i * 64}" text-anchor="middle" font-size="44" fill="white" font-family="sans-serif">${escapeXml(line)}</text>`
-    )
-    .join('\n');
-
   const svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-  <rect width="${W}" height="${H}" fill="rgba(0,0,0,0.45)"/>
-  <text x="540" y="200" text-anchor="middle" font-size="72" font-weight="bold" fill="white" font-family="sans-serif">${escapeXml(activity.activityName)}</text>
-  <text x="540" y="280" text-anchor="middle" font-size="48" fill="#e0e0e0" font-family="sans-serif">${escapeXml(dateStr)}</text>
-  ${statsBlock}
+  <rect width="${W}" height="${H}" fill="rgba(0,0,0,0.35)"/>
+  <text x="540" y="480" text-anchor="middle" font-size="80" font-weight="bold" fill="white" font-family="sans-serif">${escapeXml(activity.activityName)}</text>
+  <text x="540" y="560" text-anchor="middle" font-size="52" fill="#e0e0e0" font-family="sans-serif">${escapeXml(dateStr)}</text>
   <text x="540" y="1020" text-anchor="middle" font-size="40" font-weight="bold" fill="white" font-family="serif" font-style="italic">RunLog</text>
 </svg>`;
 

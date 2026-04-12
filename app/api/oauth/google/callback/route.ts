@@ -44,9 +44,10 @@ export async function GET(request: NextRequest) {
       new URL('/settings?success=google_photos', request.url)
     );
   } catch (err: unknown) {
-    console.error('Google OAuth callback error:', err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('Google OAuth callback error:', msg);
     return NextResponse.redirect(
-      new URL('/settings?error=google_token_exchange', request.url)
+      new URL(`/settings?error=${encodeURIComponent(msg)}`, request.url)
     );
   }
 }

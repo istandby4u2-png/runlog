@@ -53,8 +53,14 @@ export function GooglePhotosPicker({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date: today }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Session 생성 실패');
+      const text = await res.text();
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(`서버 응답 오류 (${res.status})`);
+      }
+      if (!res.ok) throw new Error((data.error as string) || 'Session 생성 실패');
 
       sessionRef.current = data.sessionId;
       setPickerUri(data.pickerUri);
@@ -65,7 +71,13 @@ export function GooglePhotosPicker({
           const pollRes = await fetch(
             `/api/photos/picker?sessionId=${sessionRef.current}&date=${today}`
           );
-          const pollData = await pollRes.json();
+          const pollText = await pollRes.text();
+          let pollData: Record<string, unknown>;
+          try {
+            pollData = JSON.parse(pollText);
+          } catch {
+            return;
+          }
 
           if (pollData.status === 'done' && pollData.blobUrl) {
             cleanup();

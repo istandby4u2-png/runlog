@@ -1,3 +1,4 @@
+import satori from 'satori';
 import sharp from 'sharp';
 
 interface ActivityData {
@@ -13,25 +14,24 @@ interface ActivityData {
 const W = 1080;
 const H = 1080;
 
-function formatPace(minPerKm: number | null): string {
-  if (!minPerKm || minPerKm <= 0) return '';
-  const mins = Math.floor(minPerKm);
-  const secs = Math.round((minPerKm - mins) * 60);
-  return `${mins}'${secs.toString().padStart(2, '0')}"`;
-}
+const FONT_URL =
+  'https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.woff';
 
-function formatDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes}min`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+let cachedFont: ArrayBuffer | null = null;
+
+async function loadFont(): Promise<ArrayBuffer> {
+  if (cachedFont) return cachedFont;
+  const res = await fetch(FONT_URL);
+  if (!res.ok) throw new Error(`Font fetch failed: ${res.status}`);
+  cachedFont = await res.arrayBuffer();
+  return cachedFont;
 }
 
 /**
  * Generate a 1080x1080 JPEG running summary card for Instagram.
  *
- * Uses sharp's SVG overlay approach: render text as SVG, composite onto
- * a background (either provided photo buffer, or solid gradient).
+ * Uses satori (text → SVG paths) + sharp (composite & JPEG encode).
+ * This ensures CJK characters render correctly on any server.
  */
 export async function generateInstagramCard(
   activity: ActivityData,
@@ -41,12 +41,76 @@ export async function generateInstagramCard(
     ? activity.startTimeLocal.slice(0, 10).replace(/-/g, '.')
     : new Date().toISOString().slice(0, 10).replace(/-/g, '.');
 
-  const svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-  <rect width="${W}" height="${H}" fill="rgba(0,0,0,0.35)"/>
-  <text x="540" y="480" text-anchor="middle" font-size="80" font-weight="bold" fill="white" font-family="sans-serif">${escapeXml(activity.activityName)}</text>
-  <text x="540" y="560" text-anchor="middle" font-size="52" fill="#e0e0e0" font-family="sans-serif">${escapeXml(dateStr)}</text>
-  <text x="540" y="1020" text-anchor="middle" font-size="40" font-weight="bold" fill="white" font-family="serif" font-style="italic">RunLog</text>
-</svg>`;
+  const fontData = await loadFont();
+
+  const overlaySvg = await satori(
+    {
+      type: 'div',
+      props: {
+        style: {
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'rgba(0,0,0,0.35)',
+        },
+        children: [
+          {
+            type: 'div',
+            props: {
+              style: {
+                fontSize: 76,
+                fontWeight: 700,
+                color: 'white',
+                textAlign: 'center',
+                maxWidth: '90%',
+              },
+              children: activity.activityName,
+            },
+          },
+          {
+            type: 'div',
+            props: {
+              style: {
+                fontSize: 48,
+                color: '#e0e0e0',
+                marginTop: 16,
+              },
+              children: dateStr,
+            },
+          },
+          {
+            type: 'div',
+            props: {
+              style: {
+                position: 'absolute',
+                bottom: 40,
+                fontSize: 38,
+                fontWeight: 700,
+                color: 'white',
+                fontStyle: 'italic',
+              },
+              children: 'RunLog',
+            },
+          },
+        ],
+      },
+    },
+    {
+      width: W,
+      height: H,
+      fonts: [
+        {
+          name: 'NotoSansJP',
+          data: fontData,
+          weight: 400,
+          style: 'normal',
+        },
+      ],
+    }
+  );
 
   let base: sharp.Sharp;
 
@@ -55,7 +119,6 @@ export async function generateInstagramCard(
       .resize(W, H, { fit: 'cover', position: 'centre' })
       .jpeg();
   } else {
-    // Dark gradient fallback
     const gradientSvg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
@@ -69,18 +132,9 @@ export async function generateInstagramCard(
   }
 
   const result = await base
-    .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
+    .composite([{ input: Buffer.from(overlaySvg), top: 0, left: 0 }])
     .jpeg({ quality: 90 })
     .toBuffer();
 
   return result;
-}
-
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
 }

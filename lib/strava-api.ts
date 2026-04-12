@@ -20,6 +20,8 @@ export interface StravaActivity {
   name: string;
   type: string;
   sport_type: string;
+  /** UTC, list/detail 응답에 포함 */
+  start_date?: string;
   start_date_local: string;
   distance: number;       // meters
   moving_time: number;    // seconds
@@ -47,14 +49,29 @@ export interface StravaActivitySummary {
   locationName: string;
 }
 
+/** Strava activity start as calendar YYYY-MM-DD in Asia/Seoul (앱의 KST 날짜 기준 테스트용). */
+export function activityKstCalendarDate(a: StravaActivity): string {
+  if (a.start_date) {
+    return new Date(
+      new Date(a.start_date).toLocaleString('en-US', { timeZone: 'Asia/Seoul' })
+    ).toISOString().slice(0, 10);
+  }
+  if (typeof a.start_date_local === 'string' && a.start_date_local.length >= 10) {
+    return a.start_date_local.slice(0, 10);
+  }
+  return '';
+}
+
 function toSummary(a: StravaActivity): StravaActivitySummary {
-  const distanceKm = a.distance / 1000;
-  const durationMinutes = Math.round(a.moving_time / 60);
-  const avgPace = distanceKm > 0 ? a.moving_time / 60 / distanceKm : null;
+  const distM = a.distance ?? 0;
+  const moveSec = a.moving_time ?? a.elapsed_time ?? 0;
+  const distanceKm = distM / 1000;
+  const durationMinutes = Math.round(moveSec / 60);
+  const avgPace = distanceKm > 0 ? moveSec / 60 / distanceKm : null;
 
   return {
     activityId: a.id,
-    activityName: a.name || 'Running',
+    activityName: a.name || 'Activity',
     startTimeLocal: a.start_date_local,
     distanceKm: Math.round(distanceKm * 100) / 100,
     durationMinutes,
@@ -134,46 +151,78 @@ export async function refreshAccessToken(refreshToken: string) {
 // Activities
 // ---------------------------------------------------------------------------
 
+export type FetchActivitiesByDateOptions = {
+  /** test-sync 등에서 원인 분석용 로그 */
+  debugLog?: string[];
+};
+
 /**
- * Fetch running activities for a specific date (YYYY-MM-DD).
- * Uses epoch-based after/before filtering.
+ * 해당 KST 달력 날짜의 Strava 활동 전부 (러닝만이 아님: Workout, Ride 등 포함).
+ *
+ * Strava `after`/`before`만으로는 UTC 경계 때문에 같은 날 활동이 빠질 수 있어,
+ * 넓은 에폭 창으로 받은 뒤 KST 기준 날짜로 맞춥니다.
  */
 export async function fetchActivitiesByDate(
   accessToken: string,
-  dateStr: string
+  dateStr: string,
+  options?: FetchActivitiesByDateOptions
 ): Promise<StravaActivitySummary[]> {
-  // KST date range → UTC epoch
-  const dayStart = new Date(`${dateStr}T00:00:00+09:00`);
-  const dayEnd = new Date(`${dateStr}T23:59:59+09:00`);
+  const dbg = options?.debugLog;
 
-  const params = new URLSearchParams({
-    after: String(Math.floor(dayStart.getTime() / 1000)),
-    before: String(Math.floor(dayEnd.getTime() / 1000)),
-    per_page: '30',
-  });
+  const noonKst = new Date(`${dateStr}T12:00:00+09:00`);
+  const afterSec = Math.floor((noonKst.getTime() - 20 * 3600 * 1000) / 1000);
+  const beforeSec = Math.floor((noonKst.getTime() + 20 * 3600 * 1000) / 1000);
 
-  const res = await fetch(
-    `https://www.strava.com/api/v3/athlete/activities?${params.toString()}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Strava activities fetch failed: ${text}`);
+  const all: StravaActivity[] = [];
+  const perPage = 50;
+  for (let page = 1; page <= 25; page += 1) {
+    const params = new URLSearchParams({
+      after: String(afterSec),
+      before: String(beforeSec),
+      per_page: String(perPage),
+      page: String(page),
+    });
+
+    const res = await fetch(
+      `https://www.strava.com/api/v3/athlete/activities?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Strava activities fetch failed: ${text}`);
+    }
+
+    const batch = (await res.json()) as StravaActivity[];
+    if (!batch.length) break;
+    all.push(...batch);
+    if (batch.length < perPage) break;
   }
 
-  const activities = (await res.json()) as StravaActivity[];
+  let onKstDay = all.filter((a) => activityKstCalendarDate(a) === dateStr);
+  onKstDay = onKstDay.sort((a, b) => {
+    const ta = new Date(a.start_date || a.start_date_local || 0).getTime();
+    const tb = new Date(b.start_date || b.start_date_local || 0).getTime();
+    return tb - ta;
+  });
 
-  // Filter for running/trail running only
-  const runTypes = ['Run', 'TrailRun', 'VirtualRun'];
-  const runs = activities.filter(
-    (a) => runTypes.includes(a.type) || runTypes.includes(a.sport_type)
-  );
+  if (dbg) {
+    dbg.push(
+      `Strava API: ${all.length}건(에폭 창), 그중 KST ${dateStr} 일치 ${onKstDay.length}건`
+    );
+    if (onKstDay.length > 0) {
+      dbg.push(
+        `KST 해당일 활동: ${onKstDay
+          .map((a) => `${a.name?.slice(0, 24) || '?'}:${a.sport_type || a.type}`)
+          .join(' | ')}`
+      );
+    }
+  }
 
-  return runs.map(toSummary);
+  return onKstDay.map(toSummary);
 }
 
 /**
- * Fetch today's running activities.
+ * Fetch today's activities (KST, 모든 종류).
  */
 export async function fetchTodayActivities(
   accessToken: string

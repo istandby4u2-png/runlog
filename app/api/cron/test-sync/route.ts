@@ -68,7 +68,9 @@ export async function GET(request: NextRequest) {
         log.push('Strava: token refreshed');
       }
 
-      const activities = await fetchStravaByDate(valid.access_token, dateStr);
+      const activities = await fetchStravaByDate(valid.access_token, dateStr, {
+        debugLog: log,
+      });
       if (activities.length > 0) {
         activity = activities[0];
         log.push(
@@ -76,7 +78,7 @@ export async function GET(request: NextRequest) {
           `${activity.activityName} ${activity.distanceKm}km`
         );
       } else {
-        log.push(`Strava: no running activities for ${dateStr}`);
+        log.push(`Strava: 해당 날짜 활동 없음 (${dateStr})`);
       }
     } else {
       log.push('Strava: not connected');

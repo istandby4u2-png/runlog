@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
   }
 
   // ------------------------------------------------------------------
-  // 1. Strava: fetch running activities for sync date (KST calendar day)
+  // 1. Strava: fetch all activities for sync date (KST calendar day)
   // ------------------------------------------------------------------
   let activity: StravaActivitySummary | null = null;
   try {
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
         `${activity.activityName} ${activity.distanceKm}km`
       );
     } else {
-      log.push('Strava: no running activities today');
+      log.push('Strava: 해당 날짜 활동 없음');
     }
   } catch (err: unknown) {
     log.push(`Strava error: ${err instanceof Error ? err.message : String(err)}`);

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getUserFromRequest } from '@/lib/auth';
 import Link from 'next/link';
-import { Edit, MapPin, Activity, Calendar } from 'lucide-react';
+import { Edit, MapPin, Activity, Calendar, Settings } from 'lucide-react';
 import { runningRecords, courses } from '@/lib/db-supabase';
 
 // This page is dynamic
@@ -61,19 +61,30 @@ export default async function ProfilePage() {
               <h1 className="text-2xl font-bold text-black">{user.username}</h1>
               <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
                 <Calendar className="w-4 h-4" />
-                <span>Joined {joinDate}</span>
+                <span>
+                  <span data-i18n="profile.joinedPrefix">가입일</span> {joinDate}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Edit Button */}
-          <Link
-            href="/profile/edit"
-            className="flex items-center gap-1 px-3 py-2 bg-white border border-black text-black rounded hover:bg-black hover:text-white transition-colors text-sm"
-          >
-            <Edit className="w-4 h-4" />
-            <span>Edit Profile</span>
-          </Link>
+          {/* Edit & Settings Buttons */}
+          <div className="flex items-center gap-2">
+            <Link
+              href="/settings"
+              className="flex items-center gap-1 px-3 py-2 bg-white border border-gray-300 text-gray-600 rounded hover:bg-gray-100 transition-colors text-sm"
+              title="자동 동기화 설정"
+            >
+              <Settings className="w-4 h-4" />
+            </Link>
+            <Link
+              href="/profile/edit"
+              className="flex items-center gap-1 px-3 py-2 bg-white border border-black text-black rounded hover:bg-black hover:text-white transition-colors text-sm"
+            >
+              <Edit className="w-4 h-4" />
+              <span data-i18n="profile.editButton">프로필 수정</span>
+            </Link>
+          </div>
         </div>
 
         {/* Bio */}
@@ -90,21 +101,36 @@ export default async function ProfilePage() {
               <Activity className="w-5 h-5 text-gray-600" />
               <p className="text-2xl font-bold text-black">{userRecords.length}</p>
             </div>
-            <p className="text-sm text-gray-500">Records</p>
+            <p
+              className="text-sm text-gray-500"
+              data-i18n="profile.stats.records"
+            >
+              기록
+            </p>
           </div>
           <div className="text-center">
             <div className="flex items-center justify-center gap-2 mb-1">
               <MapPin className="w-5 h-5 text-gray-600" />
               <p className="text-2xl font-bold text-black">{userCourses.length}</p>
             </div>
-            <p className="text-sm text-gray-500">Courses</p>
+            <p
+              className="text-sm text-gray-500"
+              data-i18n="profile.stats.courses"
+            >
+              코스
+            </p>
           </div>
           <div className="text-center">
             <div className="flex items-center justify-center gap-2 mb-1">
               <span className="text-xl">🏃</span>
               <p className="text-2xl font-bold text-black">{totalDistance.toFixed(1)}</p>
             </div>
-            <p className="text-sm text-gray-500">Total km</p>
+            <p
+              className="text-sm text-gray-500"
+              data-i18n="profile.stats.totalKm"
+            >
+              총 km
+            </p>
           </div>
         </div>
       </div>
@@ -112,7 +138,12 @@ export default async function ProfilePage() {
       {/* Recent Records */}
       {userRecords.length > 0 && (
         <div className="bg-white rounded border border-gray-200 p-6">
-          <h2 className="text-lg font-bold text-black mb-4">Recent Records</h2>
+          <h2
+            className="text-lg font-bold text-black mb-4"
+            data-i18n="profile.section.recentRecords"
+          >
+            최근 기록
+          </h2>
           <div className="space-y-3">
             {userRecords.slice(0, 5).map((record) => (
               <Link

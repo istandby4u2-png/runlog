@@ -773,3 +773,85 @@ export const comments = {
     return data;
   }
 };
+
+// User Tokens 테이블 (OAuth tokens for Google Photos, Instagram, etc.)
+export const userTokens = {
+  async findByProvider(userId: number, provider: string) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { data, error } = await supabaseAdmin
+      .from('user_tokens')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('provider', provider)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      console.error('UserTokens findByProvider error:', error);
+      return null;
+    }
+    return data;
+  },
+
+  async upsert(token: {
+    user_id: number;
+    provider: string;
+    access_token?: string | null;
+    refresh_token?: string | null;
+    token_expires_at?: string | null;
+    extra_data?: Record<string, unknown> | null;
+  }) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { data, error } = await supabaseAdmin
+      .from('user_tokens')
+      .upsert(
+        { ...token, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id,provider' }
+      )
+      .select()
+      .single();
+
+    if (error) {
+      console.error('UserTokens upsert error:', error);
+      throw error;
+    }
+    return data;
+  },
+
+  async delete(userId: number, provider: string) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { error } = await supabaseAdmin
+      .from('user_tokens')
+      .delete()
+      .eq('user_id', userId)
+      .eq('provider', provider);
+
+    if (error) {
+      console.error('UserTokens delete error:', error);
+      throw error;
+    }
+    return true;
+  },
+
+  async findAllByUser(userId: number) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { data, error } = await supabaseAdmin
+      .from('user_tokens')
+      .select('provider, token_expires_at, extra_data, updated_at')
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('UserTokens findAllByUser error:', error);
+      return [];
+    }
+    return data || [];
+  }
+};

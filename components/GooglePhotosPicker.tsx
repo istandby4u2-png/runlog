@@ -54,13 +54,14 @@ export function GooglePhotosPicker({
         body: JSON.stringify({ date: today }),
       });
       const text = await res.text();
-      let data: Record<string, unknown>;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let data: any;
       try {
         data = JSON.parse(text);
       } catch {
         throw new Error(`서버 응답 오류 (${res.status})`);
       }
-      if (!res.ok) throw new Error((data.error as string) || 'Session 생성 실패');
+      if (!res.ok) throw new Error(data.error || 'Session 생성 실패');
 
       sessionRef.current = data.sessionId;
       setPickerUri(data.pickerUri);
@@ -72,7 +73,8 @@ export function GooglePhotosPicker({
             `/api/photos/picker?sessionId=${sessionRef.current}&date=${today}`
           );
           const pollText = await pollRes.text();
-          let pollData: Record<string, unknown>;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let pollData: any;
           try {
             pollData = JSON.parse(pollText);
           } catch {

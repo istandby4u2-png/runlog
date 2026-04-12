@@ -74,6 +74,22 @@ export async function fetchTodayActivities(): Promise<GarminActivitySummary[]> {
 }
 
 /**
+ * Fetch running activities for a specific date (YYYY-MM-DD).
+ * Scans up to 100 recent activities to find matches.
+ */
+export async function fetchActivitiesByDate(dateStr: string): Promise<GarminActivitySummary[]> {
+  const client = await createGarminClient();
+  const activities = await client.getActivities(0, 100, ActivityType.Running);
+
+  const matched = activities.filter((a) => {
+    const actDate = (a.startTimeLocal || '').slice(0, 10);
+    return actDate === dateStr;
+  });
+
+  return matched.map(toSummary);
+}
+
+/**
  * Fetch the most recent running activity (any date).
  * Useful as a fallback when no activity exists for today.
  */

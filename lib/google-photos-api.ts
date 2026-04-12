@@ -51,6 +51,10 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_REDIRECT_URI =
   process.env.GOOGLE_REDIRECT_URI || 'https://runlog.life/api/oauth/google/callback';
 
+/** Shown when access token lacks photospicker.mediaitems.readonly (e.g. old Library API link). */
+export const GOOGLE_PICKER_SCOPE_ERROR =
+  'Google Photos Picker 권한이 없습니다. 아래 «연결 해제» 후 «연결»을 눌러 다시 승인해 주세요. (이전 Library API만 허용된 연결은 재연결이 필요합니다.)';
+
 export function getGoogleAuthUrl(state?: string): string {
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
@@ -59,9 +63,18 @@ export function getGoogleAuthUrl(state?: string): string {
     scope: 'https://www.googleapis.com/auth/photospicker.mediaitems.readonly',
     access_type: 'offline',
     prompt: 'consent',
+    include_granted_scopes: 'true',
   });
   if (state) params.set('state', state);
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+}
+
+function isGoogleInsufficientScopeResponse(status: number, bodyText: string): boolean {
+  if (status !== 403) return false;
+  return (
+    bodyText.includes('ACCESS_TOKEN_SCOPE_INSUFFICIENT') ||
+    bodyText.includes('insufficient authentication scopes')
+  );
 }
 
 export async function exchangeCodeForTokens(code: string) {
@@ -127,6 +140,9 @@ export async function createPickerSession(accessToken: string): Promise<PickerSe
   });
   if (!res.ok) {
     const text = await res.text();
+    if (isGoogleInsufficientScopeResponse(res.status, text)) {
+      throw new Error(GOOGLE_PICKER_SCOPE_ERROR);
+    }
     throw new Error(`Picker session create failed (${res.status}): ${text}`);
   }
   return (await res.json()) as PickerSession;

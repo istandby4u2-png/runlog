@@ -29,12 +29,14 @@ export async function GET(request: NextRequest) {
 
   try {
     const tokens = await exchangeCodeForTokens(code);
+    const existing = await userTokens.findByProvider(userId, 'google_photos');
 
     await userTokens.upsert({
       user_id: userId,
       provider: 'google_photos',
       access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token || null,
+      // 재연결 시 Google이 refresh_token을 생략하는 경우가 많음 — 기존 값 유지
+      refresh_token: tokens.refresh_token ?? existing?.refresh_token ?? null,
       token_expires_at: new Date(
         Date.now() + tokens.expires_in * 1000
       ).toISOString(),

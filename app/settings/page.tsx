@@ -60,6 +60,20 @@ function SettingsContent() {
     }
   }
 
+  async function disconnectGooglePhotos() {
+    if (!confirm('Google Photos 연결을 해제할까요? 이후 «연결»로 Picker API 권한을 다시 승인할 수 있습니다.')) {
+      return;
+    }
+    try {
+      const res = await fetch('/api/oauth/google', { method: 'DELETE' });
+      if (res.ok) {
+        await fetchConnections();
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   async function triggerSync() {
     setSyncing(true);
     setSyncResult(null);
@@ -143,10 +157,13 @@ function SettingsContent() {
           <ServiceCard
             icon={<ImageIcon className="w-6 h-6" />}
             name="Google Photos"
-            description="오늘 날짜 사진 자동 첨부"
+            description="오늘 날짜 사진 선택(Picker API). 예전 Library 전용 연결이면 재연결이 필요할 수 있습니다."
             connected={connections?.google_photos?.connected ?? false}
             connectUrl="/api/oauth/google"
             expiryLabel={formatExpiry(connections?.google_photos?.expiresAt)}
+            onDisconnect={
+              connections?.google_photos?.connected ? disconnectGooglePhotos : undefined
+            }
           />
 
           {/* Instagram */}
@@ -336,6 +353,7 @@ function ServiceCard({
   connectUrl,
   expiryLabel,
   envBased,
+  onDisconnect,
 }: {
   icon: React.ReactNode;
   name: string;
@@ -344,6 +362,7 @@ function ServiceCard({
   connectUrl: string | null;
   expiryLabel?: string;
   envBased?: boolean;
+  onDisconnect?: () => void | Promise<void>;
 }) {
   return (
     <div className="bg-white rounded border border-gray-200 p-4 flex items-center gap-4">
@@ -368,7 +387,7 @@ function ServiceCard({
           </p>
         )}
       </div>
-      <div className="shrink-0">
+      <div className="shrink-0 flex flex-col gap-2 items-end">
         {envBased ? (
           <span className="text-xs text-gray-400">환경변수 설정</span>
         ) : connectUrl ? (
@@ -379,6 +398,15 @@ function ServiceCard({
             {connected ? '재연결' : '연결'}
           </a>
         ) : null}
+        {connected && onDisconnect && (
+          <button
+            type="button"
+            onClick={() => void onDisconnect()}
+            className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded text-sm hover:bg-gray-50"
+          >
+            연결 해제
+          </button>
+        )}
       </div>
     </div>
   );

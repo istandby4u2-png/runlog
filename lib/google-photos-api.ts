@@ -178,6 +178,27 @@ export async function searchPhotosByDate(
 }
 
 /**
+ * List recent photos (no filters). Useful as a fallback when search fails.
+ */
+export async function listRecentPhotos(
+  accessToken: string,
+  pageSize = 25
+): Promise<GooglePhotosMediaItem[]> {
+  const res = await fetch(
+    `https://photoslibrary.googleapis.com/v1/mediaItems?pageSize=${pageSize}`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Google Photos list failed (${res.status})`);
+  }
+  const data = (await res.json()) as { mediaItems?: GooglePhotosMediaItem[] };
+  return data.mediaItems ?? [];
+}
+
+/**
  * Google Photos content category filter.
  * @see https://developers.google.com/photos/library/reference/rest/v1/mediaItems/search#ContentCategory
  */

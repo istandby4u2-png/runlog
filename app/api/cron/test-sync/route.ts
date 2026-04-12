@@ -4,6 +4,7 @@ import type { GarminActivitySummary } from '@/lib/garmin-api';
 import { fetchActivitiesByDate, fetchSleepData } from '@/lib/garmin-api';
 import {
   refreshAccessToken,
+  listRecentPhotos,
   searchPhotosByDate,
   searchPhotosByDateAndContent,
   downloadPhotoAsBuffer,
@@ -140,12 +141,21 @@ export async function GET(request: NextRequest) {
         token_expires_at: new Date(Date.now() + 3500 * 1000).toISOString(),
       });
 
-      let photos = await searchPhotosByDateAndContent(access_token, targetDate, ['LANDSCAPES']);
+      // Try multiple methods: landscape → date → recent list
+      let photos = await searchPhotosByDateAndContent(access_token, targetDate, ['LANDSCAPES'])
+        .catch((e: Error) => { log.push(`Landscape search error: ${e.message.slice(0, 200)}`); return []; });
       let selectedSource = 'landscape';
 
       if (photos.length === 0) {
-        photos = await searchPhotosByDate(access_token, targetDate);
-        selectedSource = 'any';
+        photos = await searchPhotosByDate(access_token, targetDate)
+          .catch((e: Error) => { log.push(`Date search error: ${e.message.slice(0, 200)}`); return []; });
+        selectedSource = 'date';
+      }
+
+      if (photos.length === 0) {
+        photos = await listRecentPhotos(access_token, 5)
+          .catch((e: Error) => { log.push(`List photos error: ${e.message.slice(0, 200)}`); return []; });
+        selectedSource = 'recent';
       }
 
       if (photos.length > 0) {
@@ -196,11 +206,29 @@ export async function GET(request: NextRequest) {
   try {
     const igToken = await userTokens.findByProvider(userId, 'instagram');
     if (igToken?.access_token && igToken.extra_data) {
-      const igUserId = (igToken.extra_data as { ig_user_id?: string }).ig_user_id;
+      let accessToken = igToken.access_token;
+
+      // Fetch the correct user ID from /me to avoid JS number precision issues
+      const meRes = await fetch(
+        `https://graph.instagram.com/me?fields=id&access_token=${accessToken}`
+      );
+      const meData = (await meRes.json()) as { id?: string; error?: unknown };
+      const igUserId = meData.id;
       if (!igUserId) {
-        log.push('Instagram: ig_user_id missing in token data');
+        log.push(`Instagram: failed to get user ID from /me: ${JSON.stringify(meData)}`);
       } else {
-        let accessToken = igToken.access_token;
+        // Fix stored ID if it was corrupted by JS number precision loss
+        const storedId = String((igToken.extra_data as { ig_user_id?: string | number }).ig_user_id || '');
+        if (storedId !== igUserId) {
+          await userTokens.upsert({
+            user_id: userId,
+            provider: 'instagram',
+            access_token: accessToken,
+            token_expires_at: igToken.token_expires_at,
+            extra_data: { ig_user_id: igUserId },
+          });
+          log.push(`Instagram: corrected ig_user_id ${storedId} → ${igUserId}`);
+        }
 
         const expiresAt = igToken.token_expires_at
           ? new Date(igToken.token_expires_at).getTime()

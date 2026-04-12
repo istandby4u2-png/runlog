@@ -157,15 +157,34 @@ export async function GET(request: NextRequest) {
   try {
     const igToken = await userTokens.findByProvider(AUTO_SYNC_USER_ID, 'instagram');
     if (igToken?.access_token && igToken.extra_data) {
-      const igUserId = (igToken.extra_data as { ig_user_id?: string }).ig_user_id;
+      let accessToken = igToken.access_token;
+
+      // Fetch correct user ID from /me to avoid JS number precision issues
+      const meRes = await fetch(
+        `https://graph.instagram.com/me?fields=id&access_token=${accessToken}`
+      );
+      const meData = (await meRes.json()) as { id?: string; error?: unknown };
+      const igUserId = meData.id;
       if (!igUserId) {
-        log.push('Instagram: ig_user_id missing in token data');
+        log.push(`Instagram: failed to get user ID from /me: ${JSON.stringify(meData)}`);
       } else {
+        // Fix stored ID if corrupted by JS number precision loss
+        const storedId = String((igToken.extra_data as { ig_user_id?: string | number }).ig_user_id || '');
+        if (storedId !== igUserId) {
+          await userTokens.upsert({
+            user_id: AUTO_SYNC_USER_ID,
+            provider: 'instagram',
+            access_token: accessToken,
+            token_expires_at: igToken.token_expires_at,
+            extra_data: { ig_user_id: igUserId },
+          });
+          log.push(`Instagram: corrected ig_user_id ${storedId} → ${igUserId}`);
+        }
+
         // Auto-refresh if token expires within 7 days
         const expiresAt = igToken.token_expires_at
           ? new Date(igToken.token_expires_at).getTime()
           : 0;
-        let accessToken = igToken.access_token;
         if (expiresAt > 0 && expiresAt - Date.now() < 7 * 24 * 3600 * 1000) {
           try {
             const refreshed = await refreshLongLivedToken(accessToken);
@@ -177,7 +196,7 @@ export async function GET(request: NextRequest) {
               token_expires_at: new Date(
                 Date.now() + refreshed.expires_in * 1000
               ).toISOString(),
-              extra_data: igToken.extra_data as Record<string, unknown>,
+              extra_data: { ig_user_id: igUserId },
             });
             log.push('Instagram: token refreshed');
           } catch (refreshErr: unknown) {

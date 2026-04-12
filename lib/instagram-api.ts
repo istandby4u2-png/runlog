@@ -50,7 +50,14 @@ export async function exchangeCodeForToken(code: string): Promise<{
     const text = await res.text();
     throw new Error(`Instagram token exchange failed: ${text}`);
   }
-  return (await res.json()) as { access_token: string; user_id: string };
+  // Parse as text first to preserve large user_id precision
+  const text = await res.text();
+  const accessTokenMatch = text.match(/"access_token"\s*:\s*"([^"]+)"/);
+  const userIdMatch = text.match(/"user_id"\s*:\s*(\d+)/);
+  if (!accessTokenMatch || !userIdMatch) {
+    throw new Error(`Unexpected Instagram response format: ${text}`);
+  }
+  return { access_token: accessTokenMatch[1], user_id: userIdMatch[1] };
 }
 
 /** Exchange a short-lived token for a long-lived one (~60 days). */

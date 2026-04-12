@@ -5,18 +5,11 @@ import {
   fetchTodayActivities,
 } from '@/lib/strava-api';
 import {
-  refreshAccessToken as refreshGoogleToken,
-  searchPhotosByDate,
-  searchPhotosByDateAndContent,
-  listRecentPhotos,
-  downloadPhotoAsBuffer,
-} from '@/lib/google-photos-api';
-import {
   publishImagePost,
   refreshLongLivedToken,
 } from '@/lib/instagram-api';
 import { generateInstagramCard } from '@/lib/instagram-image';
-import { runningRecords, userTokens } from '@/lib/db-supabase';
+import { runningRecords, userTokens, pickedPhotos } from '@/lib/db-supabase';
 import { uploadImage } from '@/lib/blob-storage';
 
 const AUTO_SYNC_USER_ID = parseInt(process.env.AUTO_SYNC_USER_ID || '0', 10);
@@ -43,7 +36,6 @@ export async function GET(request: NextRequest) {
   const todayStr = new Date(
     new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })
   ).toISOString().slice(0, 10);
-  const today = new Date(todayStr + 'T12:00:00+09:00');
 
   // ------------------------------------------------------------------
   // 1. Strava: fetch today's running activities
@@ -93,47 +85,23 @@ export async function GET(request: NextRequest) {
   }
 
   // ------------------------------------------------------------------
-  // 2. Google Photos: fetch today's landscape photo
+  // 2. Google Photos: use pre-selected photo from Picker API
   // ------------------------------------------------------------------
   let photoUrl: string | null = null;
   let photoBuffer: Buffer | null = null;
   try {
-    const gpToken = await userTokens.findByProvider(AUTO_SYNC_USER_ID, 'google_photos');
-    if (gpToken?.refresh_token) {
-      const { access_token } = await refreshGoogleToken(gpToken.refresh_token);
-
-      await userTokens.upsert({
-        user_id: AUTO_SYNC_USER_ID,
-        provider: 'google_photos',
-        access_token,
-        refresh_token: gpToken.refresh_token,
-        token_expires_at: new Date(Date.now() + 3500 * 1000).toISOString(),
-      });
-
-      let photos = await searchPhotosByDateAndContent(access_token, today, ['LANDSCAPES'])
-        .catch(() => [] as Awaited<ReturnType<typeof searchPhotosByDateAndContent>>);
-      let selectedSource = 'landscape';
-
-      if (photos.length === 0) {
-        photos = await searchPhotosByDate(access_token, today).catch(() => []);
-        selectedSource = 'date';
-      }
-
-      if (photos.length === 0) {
-        photos = await listRecentPhotos(access_token, 5).catch(() => []);
-        selectedSource = 'recent';
-      }
-
-      if (photos.length > 0) {
-        const { buffer } = await downloadPhotoAsBuffer(photos[0].baseUrl, access_token);
-        photoBuffer = buffer;
-        photoUrl = await uploadImage(buffer, 'records');
-        log.push(`Google Photos: uploaded ${selectedSource} photo`);
+    const picked = await pickedPhotos.findByDate(AUTO_SYNC_USER_ID, todayStr);
+    if (picked?.blob_url) {
+      photoUrl = picked.blob_url;
+      const res = await fetch(picked.blob_url);
+      if (res.ok) {
+        photoBuffer = Buffer.from(await res.arrayBuffer());
+        log.push('Google Photos: using pre-selected photo from Picker');
       } else {
-        log.push('Google Photos: no photos available');
+        log.push('Google Photos: pre-selected photo download failed, using URL only');
       }
     } else {
-      log.push('Google Photos: not connected');
+      log.push('Google Photos: no photo selected for today (use Settings to pick one)');
     }
   } catch (err: unknown) {
     log.push(`Google Photos error: ${err instanceof Error ? err.message : String(err)}`);

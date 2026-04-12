@@ -1,42 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Image as ImageIcon, Loader2, X } from 'lucide-react';
-import {
-  downloadPhotoAsFile,
-  getPhotoThumbnailUrl,
-  searchPhotos,
-  type GooglePhotosMediaItem,
-} from '@/lib/google-photos-api';
-
-let gsiScriptPromise: Promise<void> | null = null;
-
-function loadGsiScript(): Promise<void> {
-  if (typeof window === 'undefined') return Promise.resolve();
-  if (window.google?.accounts?.oauth2) return Promise.resolve();
-  if (gsiScriptPromise) return gsiScriptPromise;
-  gsiScriptPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-    if (existing) {
-      if (window.google?.accounts?.oauth2) {
-        resolve();
-        return;
-      }
-      existing.addEventListener('load', () => resolve());
-      existing.addEventListener('error', () => reject(new Error('GSI script error')));
-      return;
-    }
-    const s = document.createElement('script');
-    s.src = 'https://accounts.google.com/gsi/client';
-    s.async = true;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error('Google 로그인 스크립트를 불러오지 못했습니다.'));
-    document.body.appendChild(s);
-  });
-  return gsiScriptPromise;
-}
-
-const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_PHOTOS_CLIENT_ID;
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Image as ImageIcon, Loader2, X, ExternalLink } from 'lucide-react';
 
 export type GooglePhotosPickerProps = {
   onFileReady: (file: File) => void | Promise<void>;
@@ -45,6 +10,11 @@ export type GooglePhotosPickerProps = {
   className?: string;
 };
 
+/**
+ * Google Photos Picker using the new Picker API (photospicker.mediaitems.readonly).
+ * Creates a server-side session, opens the Google Photos picker in a new tab,
+ * polls for completion, then downloads the selected photo.
+ */
 export function GooglePhotosPicker({
   onFileReady,
   onError,
@@ -53,154 +23,93 @@ export function GooglePhotosPicker({
 }: GooglePhotosPickerProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [picking, setPicking] = useState(false);
-  const [items, setItems] = useState<GooglePhotosMediaItem[]>([]);
-  const [nextPageToken, setNextPageToken] = useState<string | undefined>();
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [pickerUri, setPickerUri] = useState<string | null>(null);
   const [pickerError, setPickerError] = useState<string | null>(null);
-  const tokenClientRef = useRef<{ requestAccessToken: (o?: object) => void } | null>(null);
-  const cancelledRef = useRef(false);
-  const onErrorRef = useRef(onError);
-  onErrorRef.current = onError;
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sessionRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    if (!open || !CLIENT_ID) return;
-    cancelledRef.current = false;
-
-    const run = async () => {
-      try {
-        await loadGsiScript();
-        if (cancelledRef.current || !window.google?.accounts?.oauth2) {
-          setPickerError('Google 로그인을 사용할 수 없습니다.');
-          return;
-        }
-
-        tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
-          client_id: CLIENT_ID,
-          scope: 'https://www.googleapis.com/auth/photoslibrary.readonly',
-          callback: async (resp) => {
-            if (cancelledRef.current) return;
-            if (resp.error) {
-              const err = (resp as { error_description?: string }).error_description || resp.error;
-              setPickerError(err);
-              onErrorRef.current?.(err);
-              setLoading(false);
-              return;
-            }
-            if (!resp.access_token) {
-              setLoading(false);
-              return;
-            }
-            setAccessToken(resp.access_token);
-            setLoading(true);
-            setPickerError(null);
-            try {
-              const { mediaItems, nextPageToken: next } = await searchPhotos(resp.access_token);
-              if (cancelledRef.current) return;
-              setItems(mediaItems);
-              setNextPageToken(next);
-            } catch (e: unknown) {
-              const msg = e instanceof Error ? e.message : String(e);
-              if (msg === 'UNAUTHORIZED') {
-                setAccessToken(null);
-                setPickerError('인증이 만료되었습니다. 아래에서 다시 로그인해 주세요.');
-              } else {
-                setPickerError(msg);
-              }
-              onErrorRef.current?.(msg);
-            } finally {
-              if (!cancelledRef.current) setLoading(false);
-            }
-          },
-        });
-
-        setLoading(true);
-        tokenClientRef.current.requestAccessToken();
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : '초기화 실패';
-        setPickerError(msg);
-        onErrorRef.current?.(msg);
-        setLoading(false);
-      }
-    };
-
-    void run();
-
-    return () => {
-      cancelledRef.current = true;
-    };
-  }, [open]);
-
-  const handleOpen = () => {
-    if (!CLIENT_ID) {
-      onError?.('Google Photos 연동용 클라이언트 ID가 설정되지 않았습니다.');
-      return;
+  const cleanup = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
     }
+  }, []);
+
+  useEffect(() => cleanup, [cleanup]);
+
+  const handleOpen = async () => {
     setOpen(true);
-    setItems([]);
-    setNextPageToken(undefined);
-    setPickerError(null);
-    setAccessToken(null);
-  };
-
-  const handleClose = () => {
-    setOpen(false);
-    setPickerError(null);
-  };
-
-  const handleSelect = async (item: GooglePhotosMediaItem) => {
-    if (!accessToken) return;
-    setPicking(true);
-    setPickerError(null);
-    try {
-      const file = await downloadPhotoAsFile(
-        item.baseUrl,
-        accessToken,
-        item.filename || `photo-${item.id}`
-      );
-      await onFileReady(file);
-      handleClose();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '선택한 사진을 가져오지 못했습니다.';
-      setPickerError(msg);
-      onError?.(msg);
-    } finally {
-      setPicking(false);
-    }
-  };
-
-  const handleLoadMore = async () => {
-    if (!accessToken || !nextPageToken || loading) return;
     setLoading(true);
     setPickerError(null);
+    setPickerUri(null);
+
     try {
-      const { mediaItems, nextPageToken: next } = await searchPhotos(accessToken, nextPageToken);
-      setItems((prev) => [...prev, ...mediaItems]);
-      setNextPageToken(next);
+      const today = new Date(
+        new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })
+      ).toISOString().slice(0, 10);
+
+      const res = await fetch('/api/photos/picker', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: today }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Session 생성 실패');
+
+      sessionRef.current = data.sessionId;
+      setPickerUri(data.pickerUri);
+      window.open(data.pickerUri, '_blank');
+
+      pollingRef.current = setInterval(async () => {
+        try {
+          const pollRes = await fetch(
+            `/api/photos/picker?sessionId=${sessionRef.current}&date=${today}`
+          );
+          const pollData = await pollRes.json();
+
+          if (pollData.status === 'done' && pollData.blobUrl) {
+            cleanup();
+            setLoading(false);
+            try {
+              const imgRes = await fetch(pollData.blobUrl);
+              const blob = await imgRes.blob();
+              const file = new File([blob], `google-photo-${Date.now()}.jpg`, {
+                type: blob.type || 'image/jpeg',
+              });
+              await onFileReady(file);
+              setOpen(false);
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : '사진을 가져오지 못했습니다.';
+              setPickerError(msg);
+              onError?.(msg);
+            }
+          } else if (pollData.status === 'empty') {
+            cleanup();
+            setLoading(false);
+            setPickerError('사진이 선택되지 않았습니다.');
+          } else if (pollData.error) {
+            cleanup();
+            setLoading(false);
+            setPickerError(pollData.error);
+          }
+        } catch {
+          // keep polling
+        }
+      }, 3000);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = e instanceof Error ? e.message : '초기화 실패';
       setPickerError(msg);
-      onErrorRef.current?.(msg);
-    } finally {
+      onError?.(msg);
       setLoading(false);
     }
   };
 
-  const handleRetryAuth = () => {
+  const handleClose = () => {
+    cleanup();
+    setOpen(false);
     setPickerError(null);
-    setItems([]);
-    setNextPageToken(undefined);
-    setAccessToken(null);
-    setLoading(true);
-    tokenClientRef.current?.requestAccessToken({ prompt: 'consent' });
+    setLoading(false);
   };
-
-  if (!CLIENT_ID) {
-    return null;
-  }
-
-  const origin =
-    typeof window !== 'undefined' ? window.location.origin : 'https://runlog.life';
 
   return (
     <>
@@ -221,8 +130,8 @@ export function GooglePhotosPicker({
           aria-modal="true"
           aria-labelledby="gphotos-title"
         >
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full flex flex-col p-6">
+            <div className="flex items-center justify-between mb-4">
               <h2 id="gphotos-title" className="text-lg font-semibold text-gray-900">
                 Google 포토에서 선택
               </h2>
@@ -236,68 +145,27 @@ export function GooglePhotosPicker({
               </button>
             </div>
 
-            <div className="p-3 text-xs text-gray-500 border-b border-gray-100 space-y-1">
-              <p>Google 계정으로 사진 라이브러리 접근 권한을 허용하면 최근 사진이 표시됩니다.</p>
-              <p className="text-gray-600">
-                <strong className="text-gray-800">400 redirect_uri_mismatch</strong>가 나오면 Google Cloud → 사용자 인증 정보 → 해당{' '}
-                <strong>웹 클라이언트</strong>에서 <strong>승인된 JavaScript 원본</strong>과{' '}
-                <strong>승인된 리디렉션 URI</strong> 모두에{' '}
-                <code className="bg-gray-100 px-1 rounded break-all">{origin}</code>를 추가하고, 같은 값에{' '}
-                <code className="bg-gray-100 px-1 rounded">{origin}/</code>도 함께 넣어 보세요. 저장 후 1~5분 뒤 다시 시도합니다.
-              </p>
-            </div>
-
-            {pickerError && (
-              <div className="mx-4 mt-3 p-2 text-sm text-red-700 bg-red-50 rounded flex flex-wrap items-center gap-2">
-                <span>{pickerError}</span>
-                <button type="button" onClick={handleRetryAuth} className="text-sm underline">
-                  다시 로그인
-                </button>
+            {loading && (
+              <div className="flex flex-col items-center justify-center py-8 text-gray-500">
+                <Loader2 className="w-8 h-8 animate-spin mb-3" />
+                <p className="text-sm">Google Photos에서 사진을 선택해주세요.</p>
+                <p className="text-xs text-gray-400 mt-1">선택이 완료되면 자동으로 감지됩니다.</p>
+                {pickerUri && (
+                  <a
+                    href={pickerUri}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex items-center gap-1 text-sm text-blue-600 underline"
+                  >
+                    Google Photos 열기 <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto p-4 min-h-[200px]">
-              {loading && items.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-                  <Loader2 className="w-8 h-8 animate-spin mb-2" />
-                  <p>사진을 불러오는 중…</p>
-                </div>
-              ) : items.length === 0 && !loading ? (
-                <p className="text-center text-gray-500 py-8">표시할 사진이 없습니다.</p>
-              ) : (
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                  {items.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      disabled={picking || !accessToken}
-                      onClick={() => handleSelect(item)}
-                      className="relative aspect-square rounded overflow-hidden border border-gray-200 hover:ring-2 hover:ring-black focus:outline-none focus:ring-2 focus:ring-black disabled:opacity-50"
-                    >
-                      {accessToken && (
-                        <img
-                          src={getPhotoThumbnailUrl(item.baseUrl, accessToken, 200)}
-                          alt=""
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {nextPageToken && (
-              <div className="p-3 border-t border-gray-100 flex justify-center">
-                <button
-                  type="button"
-                  onClick={handleLoadMore}
-                  disabled={loading}
-                  className="px-4 py-2 text-sm border border-black rounded hover:bg-black hover:text-white disabled:opacity-50"
-                >
-                  {loading ? '불러오는 중…' : '더 보기'}
-                </button>
+            {pickerError && (
+              <div className="p-3 text-sm text-red-700 bg-red-50 rounded">
+                {pickerError}
               </div>
             )}
           </div>

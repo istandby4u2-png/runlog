@@ -43,74 +43,74 @@ export async function generateInstagramCard(
 
   const fontData = await loadFont();
 
-  const overlaySvg = await satori(
-    {
-      type: 'div',
-      props: {
-        style: {
-          width: '100%',
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: 'rgba(0,0,0,0.35)',
-        },
-        children: [
-          {
-            type: 'div',
-            props: {
-              style: {
-                fontSize: 76,
-                fontWeight: 700,
-                color: 'white',
-                textAlign: 'center',
-                maxWidth: '90%',
-              },
-              children: activity.activityName,
-            },
-          },
-          {
-            type: 'div',
-            props: {
-              style: {
-                fontSize: 48,
-                color: '#e0e0e0',
-                marginTop: 16,
-              },
-              children: dateStr,
-            },
-          },
-          {
-            type: 'div',
-            props: {
-              style: {
-                position: 'absolute',
-                bottom: 40,
-                fontSize: 38,
-                fontWeight: 700,
-                color: 'white',
-                fontStyle: 'italic',
-              },
-              children: 'RunLog',
-            },
-          },
-        ],
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const element = {
+    type: 'div',
+    props: {
+      style: {
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.35)',
       },
-    },
-    {
-      width: W,
-      height: H,
-      fonts: [
+      children: [
         {
-          name: 'NotoSansJP',
-          data: fontData,
-          weight: 400,
-          style: 'normal',
+          type: 'div',
+          props: {
+            style: {
+              fontSize: 76,
+              fontWeight: 700,
+              color: 'white',
+              textAlign: 'center',
+              maxWidth: '90%',
+            },
+            children: activity.activityName,
+          },
+        },
+        {
+          type: 'div',
+          props: {
+            style: {
+              fontSize: 48,
+              color: '#e0e0e0',
+              marginTop: 16,
+            },
+            children: dateStr,
+          },
+        },
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute',
+              bottom: 40,
+              fontSize: 38,
+              fontWeight: 700,
+              color: 'white',
+              fontStyle: 'italic',
+            },
+            children: 'RunLog',
+          },
         },
       ],
-    }
-  );
+    },
+  } as any;
+
+  const overlaySvg = await satori(element, {
+    width: W,
+    height: H,
+    fonts: [
+      {
+        name: 'NotoSansJP',
+        data: fontData,
+        weight: 400,
+        style: 'normal' as const,
+      },
+    ],
+  });
 
   let base: sharp.Sharp;
 

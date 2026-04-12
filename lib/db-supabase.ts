@@ -774,6 +774,71 @@ export const comments = {
   }
 };
 
+// Picked Photos 테이블 (Google Photos Picker API로 선택한 사진)
+export const pickedPhotos = {
+  async findByDate(userId: number, photoDate: string) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { data, error } = await supabaseAdmin
+      .from('picked_photos')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('photo_date', photoDate)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      console.error('PickedPhotos findByDate error:', error);
+      return null;
+    }
+    return data;
+  },
+
+  async upsert(userId: number, photoDate: string, blobUrl: string) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { data, error } = await supabaseAdmin
+      .from('picked_photos')
+      .upsert(
+        {
+          user_id: userId,
+          photo_date: photoDate,
+          blob_url: blobUrl,
+          created_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,photo_date' }
+      )
+      .select()
+      .single();
+
+    if (error) {
+      console.error('PickedPhotos upsert error:', error);
+      throw error;
+    }
+    return data;
+  },
+
+  async findRecent(userId: number, limit = 7) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { data, error } = await supabaseAdmin
+      .from('picked_photos')
+      .select('*')
+      .eq('user_id', userId)
+      .order('photo_date', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.error('PickedPhotos findRecent error:', error);
+      return [];
+    }
+    return data || [];
+  },
+};
+
 // User Tokens 테이블 (OAuth tokens for Google Photos, Instagram, etc.)
 export const userTokens = {
   async findByProvider(userId: number, provider: string) {

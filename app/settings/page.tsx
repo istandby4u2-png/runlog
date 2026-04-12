@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -13,6 +13,9 @@ import {
   ArrowLeft,
   RefreshCw,
   Clock,
+  Camera,
+  ExternalLink,
+  Loader2,
 } from 'lucide-react';
 
 interface ConnectionStatus {
@@ -116,8 +119,8 @@ function SettingsContent() {
       <div className="mb-6 p-4 bg-gray-50 rounded border border-gray-200 text-sm text-gray-700 space-y-1">
         <p>매일 21:00 (KST)에 자동으로 실행됩니다:</p>
         <ol className="list-decimal list-inside space-y-0.5">
-          <li>Garmin Connect에서 오늘의 러닝 기록을 가져옵니다</li>
-          <li>Google Photos에서 오늘 촬영한 사진을 첨부합니다</li>
+          <li>Strava에서 오늘의 러닝 기록을 가져옵니다</li>
+          <li>미리 선택한 Google Photos 사진을 배경으로 사용합니다</li>
           <li>RunLog에 기록을 생성하고 Instagram에 자동 게시합니다</li>
         </ol>
       </div>
@@ -158,6 +161,18 @@ function SettingsContent() {
         </div>
       )}
 
+      {/* Photo Picker */}
+      {connections?.google_photos?.connected && (
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <h2 className="text-lg font-bold text-black mb-3">오늘의 사진 선택</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Google Photos에서 Instagram 카드 배경으로 사용할 사진을 선택하세요.
+            선택하지 않으면 기본 그라데이션 배경이 사용됩니다.
+          </p>
+          <PhotoPicker />
+        </div>
+      )}
+
       {/* Manual sync trigger */}
       <div className="mt-8 pt-6 border-t border-gray-200">
         <h2 className="text-lg font-bold text-black mb-3">수동 동기화</h2>
@@ -179,6 +194,137 @@ function SettingsContent() {
         )}
       </div>
     </main>
+  );
+}
+
+function PhotoPicker() {
+  const [pickerState, setPickerState] = useState<
+    'idle' | 'creating' | 'picking' | 'processing' | 'done' | 'error'
+  >('idle');
+  const [pickerUri, setPickerUri] = useState<string | null>(null);
+  const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const todayKST = new Date(
+    new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })
+  ).toISOString().slice(0, 10);
+
+  const [photoDate, setPhotoDate] = useState(todayKST);
+
+  const cleanup = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => cleanup, [cleanup]);
+
+  async function startPicker() {
+    setPickerState('creating');
+    setErrorMsg(null);
+    setResultUrl(null);
+
+    try {
+      const res = await fetch('/api/photos/picker', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: photoDate }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Session 생성 실패');
+
+      const { sessionId, pickerUri: uri } = data;
+      setPickerUri(uri);
+      setPickerState('picking');
+
+      window.open(uri, '_blank');
+
+      pollingRef.current = setInterval(async () => {
+        try {
+          const pollRes = await fetch(
+            `/api/photos/picker?sessionId=${sessionId}&date=${photoDate}`
+          );
+          const pollData = await pollRes.json();
+
+          if (pollData.status === 'done') {
+            cleanup();
+            setResultUrl(pollData.blobUrl);
+            setPickerState('done');
+          } else if (pollData.status === 'empty') {
+            cleanup();
+            setErrorMsg('사진이 선택되지 않았습니다.');
+            setPickerState('error');
+          } else if (pollData.error) {
+            cleanup();
+            setErrorMsg(pollData.error);
+            setPickerState('error');
+          }
+        } catch {
+          // keep polling
+        }
+      }, 3000);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setPickerState('error');
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3">
+        <input
+          type="date"
+          value={photoDate}
+          onChange={(e) => setPhotoDate(e.target.value)}
+          className="border border-gray-300 rounded px-3 py-1.5 text-sm"
+        />
+        <button
+          onClick={startPicker}
+          disabled={pickerState === 'creating' || pickerState === 'picking'}
+          className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded hover:bg-gray-800 disabled:opacity-50 transition-colors text-sm"
+        >
+          {pickerState === 'creating' || pickerState === 'picking' ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Camera className="w-4 h-4" />
+          )}
+          {pickerState === 'picking' ? '사진 선택 대기 중...' : '사진 선택'}
+        </button>
+      </div>
+
+      {pickerState === 'picking' && pickerUri && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800 space-y-2">
+          <p>Google Photos에서 사진을 선택해주세요. 선택이 완료되면 자동으로 감지됩니다.</p>
+          <a
+            href={pickerUri}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-blue-600 underline"
+          >
+            Google Photos 열기 <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+      )}
+
+      {pickerState === 'done' && resultUrl && (
+        <div className="p-3 bg-green-50 border border-green-200 rounded text-sm text-green-800 flex items-center gap-3">
+          <img src={resultUrl} alt="Selected" className="w-16 h-16 object-cover rounded" />
+          <div>
+            <p className="font-medium">사진 저장 완료!</p>
+            <p className="text-xs text-green-600">{photoDate} 날짜로 저장되었습니다.</p>
+          </div>
+        </div>
+      )}
+
+      {pickerState === 'error' && errorMsg && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {errorMsg}
+        </div>
+      )}
+    </div>
   );
 }
 

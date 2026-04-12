@@ -158,7 +158,27 @@ export async function publishMedia(
 }
 
 /**
+ * Check the status of a media container.
+ * status_code: EXPIRED | ERROR | FINISHED | IN_PROGRESS | PUBLISHED
+ */
+async function checkContainerStatus(
+  containerId: string,
+  accessToken: string
+): Promise<{ status_code: string; error_message?: string }> {
+  const res = await fetch(
+    `https://graph.instagram.com/${GRAPH_API_VERSION}/${containerId}?fields=status_code,status&access_token=${accessToken}`
+  );
+  if (!res.ok) return { status_code: 'UNKNOWN' };
+  return (await res.json()) as { status_code: string; error_message?: string };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Convenience: publish a single image to Instagram.
+ * Waits for the media container to finish processing before publishing.
  * Returns the published media ID.
  */
 export async function publishImagePost(
@@ -168,5 +188,17 @@ export async function publishImagePost(
   caption: string
 ): Promise<string> {
   const containerId = await createMediaContainer(igUserId, accessToken, imageUrl, caption);
+
+  // Poll container status until FINISHED (max ~45 seconds)
+  const maxAttempts = 9;
+  for (let i = 0; i < maxAttempts; i++) {
+    await sleep(5000);
+    const status = await checkContainerStatus(containerId, accessToken);
+    if (status.status_code === 'FINISHED') break;
+    if (status.status_code === 'ERROR' || status.status_code === 'EXPIRED') {
+      throw new Error(`Instagram container ${status.status_code}: ${status.error_message || 'unknown'}`);
+    }
+  }
+
   return publishMedia(igUserId, accessToken, containerId);
 }

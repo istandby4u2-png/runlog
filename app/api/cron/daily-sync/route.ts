@@ -3,6 +3,7 @@ import { fetchTodayActivities, fetchSleepData } from '@/lib/garmin-api';
 import {
   refreshAccessToken,
   searchPhotosByDate,
+  searchPhotosByDateAndContent,
   downloadPhotoAsBuffer,
 } from '@/lib/google-photos-api';
 import {
@@ -92,15 +93,30 @@ export async function GET(request: NextRequest) {
         token_expires_at: new Date(Date.now() + 3500 * 1000).toISOString(),
       });
 
-      const photos = await searchPhotosByDate(access_token, today);
-      if (photos.length > 0) {
-        const { buffer, contentType } = await downloadPhotoAsBuffer(
-          photos[0].baseUrl,
+      // Try landscape/nature photos first, then fall back to any photo
+      let landscapePhotos = await searchPhotosByDateAndContent(
+        access_token,
+        today,
+        ['LANDSCAPES']
+      );
+      let selectedSource = 'landscape';
+
+      if (landscapePhotos.length === 0) {
+        landscapePhotos = await searchPhotosByDate(access_token, today);
+        selectedSource = 'any';
+      }
+
+      if (landscapePhotos.length > 0) {
+        const { buffer } = await downloadPhotoAsBuffer(
+          landscapePhotos[0].baseUrl,
           access_token
         );
         photoBuffer = buffer;
         photoUrl = await uploadImage(buffer, 'records');
-        log.push(`Google Photos: uploaded (${photos.length} found for ${todayStr})`);
+        log.push(
+          `Google Photos: uploaded ${selectedSource} photo ` +
+          `(${landscapePhotos.length} ${selectedSource} found for ${todayStr})`
+        );
       } else {
         log.push('Google Photos: no photos for today');
       }

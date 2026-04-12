@@ -177,6 +177,71 @@ export async function searchPhotosByDate(
   return data.mediaItems ?? [];
 }
 
+/**
+ * Google Photos content category filter.
+ * @see https://developers.google.com/photos/library/reference/rest/v1/mediaItems/search#ContentCategory
+ */
+type ContentCategory =
+  | 'LANDSCAPES'
+  | 'CITYSCAPES'
+  | 'LANDMARKS'
+  | 'SELFIES'
+  | 'PEOPLE'
+  | 'PETS'
+  | 'TRAVEL'
+  | 'ANIMALS'
+  | 'FOOD'
+  | 'SPORT'
+  | 'NIGHT'
+  | 'GARDENS'
+  | 'FLOWERS';
+
+/**
+ * Search photos by date + content category (e.g. LANDSCAPES for sky/nature).
+ * Google Photos API natively supports content-based filtering.
+ */
+export async function searchPhotosByDateAndContent(
+  accessToken: string,
+  date: Date,
+  categories: ContentCategory[] = ['LANDSCAPES']
+): Promise<GooglePhotosMediaItem[]> {
+  const body = {
+    pageSize: 25,
+    filters: {
+      dateFilter: {
+        dates: [
+          {
+            year: date.getFullYear(),
+            month: date.getMonth() + 1,
+            day: date.getDate(),
+          },
+        ],
+      },
+      mediaTypeFilter: { mediaTypes: ['PHOTO'] },
+      contentFilter: {
+        includedContentCategories: categories,
+      },
+    },
+  };
+
+  const res = await fetch('https://photoslibrary.googleapis.com/v1/mediaItems:search', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Google Photos content search failed (${res.status})`);
+  }
+
+  const data = (await res.json()) as { mediaItems?: GooglePhotosMediaItem[] };
+  return data.mediaItems ?? [];
+}
+
 /** Download a photo as a Buffer (server-side friendly). */
 export async function downloadPhotoAsBuffer(
   baseUrl: string,

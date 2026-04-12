@@ -261,7 +261,7 @@ function PhotoPicker() {
       pollingRef.current = setInterval(async () => {
         try {
           const pollRes = await fetch(
-            `/api/photos/picker?sessionId=${sessionId}&date=${photoDate}`
+            `/api/photos/picker?sessionId=${encodeURIComponent(sessionId)}&date=${encodeURIComponent(photoDate)}`
           );
           const pollData = await pollRes.json();
 

@@ -70,7 +70,7 @@ export function GooglePhotosPicker({
       pollingRef.current = setInterval(async () => {
         try {
           const pollRes = await fetch(
-            `/api/photos/picker?sessionId=${sessionRef.current}&date=${today}`
+            `/api/photos/picker?sessionId=${encodeURIComponent(sessionRef.current ?? '')}&date=${encodeURIComponent(today)}`
           );
           const pollText = await pollRes.text();
           // eslint-disable-next-line @typescript-eslint/no-explicit-any

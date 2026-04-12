@@ -129,6 +129,30 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
 
 const PICKER_API_BASE = 'https://photospicker.googleapis.com/v1';
 
+/** Thrown when mediaItems.list returns FAILED_PRECONDITION (user has not finished picking). */
+export class PickerListNotReadyError extends Error {
+  constructor() {
+    super('PICKER_LIST_NOT_READY');
+    this.name = 'PickerListNotReadyError';
+  }
+}
+
+function normalizePickerSessionId(sessionId: string): string {
+  return sessionId.replace(/^sessions\//, '').trim();
+}
+
+function sessionPathSegment(sessionId: string): string {
+  return encodeURIComponent(normalizePickerSessionId(sessionId));
+}
+
+function isMediaListFailedPrecondition(status: number, body: string): boolean {
+  if (status !== 400 && status !== 412) return false;
+  return (
+    body.includes('FAILED_PRECONDITION') ||
+    body.toLowerCase().includes('failed precondition')
+  );
+}
+
 export async function createPickerSession(accessToken: string): Promise<PickerSession> {
   const res = await fetch(`${PICKER_API_BASE}/sessions`, {
     method: 'POST',
@@ -148,13 +172,21 @@ export async function createPickerSession(accessToken: string): Promise<PickerSe
   return (await res.json()) as PickerSession;
 }
 
+/**
+ * Poll session status. Returns `null` if the session no longer exists (404).
+ * After the user taps Done, Google may end the session immediately — the next
+ * `sessions.get` can be NOT_FOUND even though `mediaItems.list` still works.
+ */
 export async function getPickerSession(
   accessToken: string,
   sessionId: string
-): Promise<PickerSession> {
-  const res = await fetch(`${PICKER_API_BASE}/sessions/${sessionId}`, {
+): Promise<PickerSession | null> {
+  const res = await fetch(`${PICKER_API_BASE}/sessions/${sessionPathSegment(sessionId)}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
+  if (res.status === 404) {
+    return null;
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Picker session get failed (${res.status}): ${text}`);
@@ -169,9 +201,11 @@ export async function listPickedMediaItems(
   const items: PickedMediaItem[] = [];
   let pageToken: string | undefined;
 
+  const sid = normalizePickerSessionId(sessionId);
+
   do {
     const url = new URL(`${PICKER_API_BASE}/mediaItems`);
-    url.searchParams.set('sessionId', sessionId);
+    url.searchParams.set('sessionId', sid);
     if (pageToken) url.searchParams.set('pageToken', pageToken);
 
     const res = await fetch(url.toString(), {
@@ -179,6 +213,9 @@ export async function listPickedMediaItems(
     });
     if (!res.ok) {
       const text = await res.text();
+      if (isMediaListFailedPrecondition(res.status, text)) {
+        throw new PickerListNotReadyError();
+      }
       throw new Error(`Picker list media failed (${res.status}): ${text}`);
     }
     const data = (await res.json()) as {
@@ -196,7 +233,7 @@ export async function deletePickerSession(
   accessToken: string,
   sessionId: string
 ): Promise<void> {
-  await fetch(`${PICKER_API_BASE}/sessions/${sessionId}`, {
+  await fetch(`${PICKER_API_BASE}/sessions/${sessionPathSegment(sessionId)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${accessToken}` },
   });

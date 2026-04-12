@@ -7,6 +7,7 @@ import {
   listPickedMediaItems,
   downloadPhotoAsBuffer,
   deletePickerSession,
+  PickerListNotReadyError,
 } from '@/lib/google-photos-api';
 import { userTokens, pickedPhotos } from '@/lib/db-supabase';
 import { uploadImage } from '@/lib/blob-storage';
@@ -83,36 +84,44 @@ export async function GET(request: NextRequest) {
 
   try {
     const gpToken = await userTokens.findByProvider(userId, 'google_photos');
-    if (!gpToken?.access_token) {
-      return NextResponse.json({ error: 'Google Photos not connected' }, { status: 400 });
+    if (!gpToken?.refresh_token) {
+      return NextResponse.json(
+        { error: 'Google Photos가 연결되어 있지 않습니다. Settings에서 먼저 연결해주세요.' },
+        { status: 400 }
+      );
     }
 
-    let accessToken = gpToken.access_token;
-    const expiresAt = gpToken.token_expires_at
-      ? new Date(gpToken.token_expires_at).getTime()
-      : 0;
-    if (expiresAt > 0 && expiresAt - Date.now() < 60_000 && gpToken.refresh_token) {
-      const refreshed = await refreshAccessToken(gpToken.refresh_token);
-      accessToken = refreshed.access_token;
-      await userTokens.upsert({
-        user_id: userId,
-        provider: 'google_photos',
-        access_token: accessToken,
-        refresh_token: gpToken.refresh_token,
-        token_expires_at: new Date(Date.now() + 3500 * 1000).toISOString(),
-      });
-    }
+    // POST와 동일하게 매 폴링마다 갱신 — DB에 남은 액세스 토큰과 세션 생성 시 토큰이 어긋나 404가 나는 경우 방지
+    const { access_token: accessToken } = await refreshAccessToken(gpToken.refresh_token);
+    await userTokens.upsert({
+      user_id: userId,
+      provider: 'google_photos',
+      access_token: accessToken,
+      refresh_token: gpToken.refresh_token,
+      token_expires_at: new Date(Date.now() + 3500 * 1000).toISOString(),
+    });
 
     const session = await getPickerSession(accessToken, sessionId);
 
-    if (!session.mediaItemsSet) {
+    if (session && session.mediaItemsSet === false) {
       return NextResponse.json({
         status: 'waiting',
         pollingConfig: session.pollingConfig,
       });
     }
 
-    const items = await listPickedMediaItems(accessToken, sessionId);
+    let items;
+    try {
+      items = await listPickedMediaItems(accessToken, sessionId);
+    } catch (e) {
+      if (e instanceof PickerListNotReadyError) {
+        return NextResponse.json({
+          status: 'waiting',
+          pollingConfig: session?.pollingConfig,
+        });
+      }
+      throw e;
+    }
     if (items.length === 0) {
       return NextResponse.json({ status: 'empty', message: '사진이 선택되지 않았습니다.' });
     }

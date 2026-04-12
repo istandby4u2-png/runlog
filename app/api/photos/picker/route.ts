@@ -16,6 +16,9 @@ import { uploadImage } from '@/lib/blob-storage';
 
 export const dynamic = 'force-dynamic';
 
+/** Picker 세션은 생성 직후의 액세스 토큰과 함께 쓰이는 경우가 있어, 폴링마다 refresh 하면 NOT_FOUND 가 날 수 있음 */
+const ACCESS_TOKEN_REFRESH_IF_EXPIRES_WITHIN_MS = 120_000;
+
 /**
  * POST /api/photos/picker
  * Create a new Picker session → returns { sessionId, pickerUri }
@@ -93,15 +96,26 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // POST와 동일하게 매 폴링마다 갱신 — DB에 남은 액세스 토큰과 세션 생성 시 토큰이 어긋나 404가 나는 경우 방지
-    const { access_token: accessToken } = await refreshAccessToken(gpToken.refresh_token);
-    await userTokens.upsert({
-      user_id: userId,
-      provider: 'google_photos',
-      access_token: accessToken,
-      refresh_token: gpToken.refresh_token,
-      token_expires_at: new Date(Date.now() + 3500 * 1000).toISOString(),
-    });
+    let accessToken = gpToken.access_token ?? '';
+    const expiresAtMs = gpToken.token_expires_at
+      ? new Date(gpToken.token_expires_at).getTime()
+      : 0;
+    const mustRefresh =
+      !accessToken ||
+      !expiresAtMs ||
+      expiresAtMs - Date.now() < ACCESS_TOKEN_REFRESH_IF_EXPIRES_WITHIN_MS;
+
+    if (mustRefresh) {
+      const refreshed = await refreshAccessToken(gpToken.refresh_token);
+      accessToken = refreshed.access_token;
+      await userTokens.upsert({
+        user_id: userId,
+        provider: 'google_photos',
+        access_token: accessToken,
+        refresh_token: gpToken.refresh_token,
+        token_expires_at: new Date(Date.now() + 3500 * 1000).toISOString(),
+      });
+    }
 
     // 공식 가이드: 선택 완료 후 sessions.get 이 먼저 사라질 수 있음 → mediaItems.list 를 우선 시도
     let items: PickedMediaItem[];
@@ -126,7 +140,7 @@ export async function GET(request: NextRequest) {
           return NextResponse.json(
             {
               error:
-                '피커 세션을 찾을 수 없습니다. RunLog에 연결한 Google 계정과 피커를 연 브라우저의 Google 계정이 같은지 확인한 뒤 다시 시도해 주세요.',
+                '피커 세션을 찾을 수 없습니다. 시간이 지나 세션이 끝났을 수 있으니 «사진 선택»을 다시 눌러 주세요. 계속되면 브라우저에서 photos.google.com 에 로그인한 계정이 RunLog 설정과 같은지 확인해 주세요.',
               code: 'PICKER_SESSION_NOT_FOUND',
             },
             { status: 410 }

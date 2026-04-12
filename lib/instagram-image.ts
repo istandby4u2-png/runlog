@@ -1,5 +1,14 @@
 import sharp from 'sharp';
-import type { GarminActivitySummary } from './garmin-api';
+
+interface ActivityData {
+  activityName: string;
+  startTimeLocal: string;
+  distanceKm: number;
+  durationMinutes: number;
+  calories: number;
+  averageHR: number;
+  averagePaceMinPerKm: number | null;
+}
 
 const W = 1080;
 const H = 1080;
@@ -25,7 +34,7 @@ function formatDuration(minutes: number): string {
  * a background (either provided photo buffer, or solid gradient).
  */
 export async function generateInstagramCard(
-  activity: GarminActivitySummary,
+  activity: ActivityData,
   backgroundPhoto?: Buffer | null
 ): Promise<Buffer> {
   const dateStr = activity.startTimeLocal

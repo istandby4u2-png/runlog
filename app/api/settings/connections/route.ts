@@ -12,16 +12,14 @@ export async function GET() {
 
   const tokens = await userTokens.findAllByUser(userId);
 
-  const garminConnected = !!(process.env.GARMIN_EMAIL && process.env.GARMIN_PASSWORD);
-
   const connections: Record<string, { connected: boolean; expiresAt?: string | null }> = {
-    garmin: { connected: garminConnected },
+    strava: { connected: false },
     google_photos: { connected: false },
     instagram: { connected: false },
   };
 
   for (const t of tokens) {
-    if (t.provider === 'google_photos' || t.provider === 'instagram') {
+    if (t.provider === 'strava' || t.provider === 'google_photos' || t.provider === 'instagram') {
       connections[t.provider] = {
         connected: true,
         expiresAt: t.token_expires_at,

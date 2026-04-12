@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchTodayActivities, fetchSleepData } from '@/lib/garmin-api';
+import type { StravaActivitySummary } from '@/lib/strava-api';
 import {
-  refreshAccessToken,
+  getValidAccessToken,
+  fetchTodayActivities,
+} from '@/lib/strava-api';
+import {
+  refreshAccessToken as refreshGoogleToken,
   searchPhotosByDate,
   searchPhotosByDateAndContent,
+  listRecentPhotos,
   downloadPhotoAsBuffer,
 } from '@/lib/google-photos-api';
 import {
@@ -20,7 +25,6 @@ const CRON_SECRET = process.env.CRON_SECRET;
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
-  // Verify Vercel cron secret
   if (CRON_SECRET) {
     const authHeader = request.headers.get('authorization');
     if (authHeader !== `Bearer ${CRON_SECRET}`) {
@@ -36,55 +40,68 @@ export async function GET(request: NextRequest) {
   }
 
   const log: string[] = [];
-  const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
+  const todayStr = new Date(
+    new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })
+  ).toISOString().slice(0, 10);
+  const today = new Date(todayStr + 'T12:00:00+09:00');
 
   // ------------------------------------------------------------------
-  // 1. Garmin: fetch today's running activities
+  // 1. Strava: fetch today's running activities
   // ------------------------------------------------------------------
-  let garminActivity: Awaited<ReturnType<typeof fetchTodayActivities>>[number] | null = null;
+  let activity: StravaActivitySummary | null = null;
   try {
-    const activities = await fetchTodayActivities();
+    const stravaToken = await userTokens.findByProvider(AUTO_SYNC_USER_ID, 'strava');
+    if (!stravaToken?.refresh_token) {
+      log.push('Strava: not connected');
+      return NextResponse.json({ ok: true, log, synced: false });
+    }
+
+    const valid = await getValidAccessToken({
+      access_token: stravaToken.access_token,
+      refresh_token: stravaToken.refresh_token,
+      token_expires_at: stravaToken.token_expires_at,
+    });
+
+    // Update stored tokens if refreshed
+    if (valid.access_token !== stravaToken.access_token) {
+      await userTokens.upsert({
+        user_id: AUTO_SYNC_USER_ID,
+        provider: 'strava',
+        access_token: valid.access_token,
+        refresh_token: valid.refresh_token,
+        token_expires_at: new Date(valid.expires_at * 1000).toISOString(),
+      });
+      log.push('Strava: token refreshed');
+    }
+
+    const activities = await fetchTodayActivities(valid.access_token);
     if (activities.length > 0) {
-      garminActivity = activities[0];
-      log.push(`Garmin: found ${activities.length} activity(ies) — ${garminActivity.activityName} ${garminActivity.distanceKm}km`);
+      activity = activities[0];
+      log.push(
+        `Strava: found ${activities.length} activity(ies) — ` +
+        `${activity.activityName} ${activity.distanceKm}km`
+      );
     } else {
-      log.push('Garmin: no running activities today, skipping record creation');
+      log.push('Strava: no running activities today');
     }
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    log.push(`Garmin error: ${msg}`);
+    log.push(`Strava error: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  if (!garminActivity) {
+  if (!activity) {
     return NextResponse.json({ ok: true, log, synced: false });
   }
 
   // ------------------------------------------------------------------
-  // 2. Garmin: fetch sleep data
-  // ------------------------------------------------------------------
-  let sleepHours: number | null = null;
-  try {
-    const sleep = await fetchSleepData(today);
-    if (sleep) {
-      sleepHours = Math.round(sleep.hours * 10) / 10;
-      log.push(`Garmin sleep: ${sleepHours}h`);
-    }
-  } catch (err: unknown) {
-    log.push(`Garmin sleep error: ${err instanceof Error ? err.message : String(err)}`);
-  }
-
-  // ------------------------------------------------------------------
-  // 3. Google Photos: fetch today's photo
+  // 2. Google Photos: fetch today's landscape photo
   // ------------------------------------------------------------------
   let photoUrl: string | null = null;
   let photoBuffer: Buffer | null = null;
   try {
     const gpToken = await userTokens.findByProvider(AUTO_SYNC_USER_ID, 'google_photos');
     if (gpToken?.refresh_token) {
-      const { access_token } = await refreshAccessToken(gpToken.refresh_token);
+      const { access_token } = await refreshGoogleToken(gpToken.refresh_token);
 
-      // Update stored access token
       await userTokens.upsert({
         user_id: AUTO_SYNC_USER_ID,
         provider: 'google_photos',
@@ -93,55 +110,50 @@ export async function GET(request: NextRequest) {
         token_expires_at: new Date(Date.now() + 3500 * 1000).toISOString(),
       });
 
-      // Try landscape/nature photos first, then fall back to any photo
-      let landscapePhotos = await searchPhotosByDateAndContent(
-        access_token,
-        today,
-        ['LANDSCAPES']
-      );
+      let photos = await searchPhotosByDateAndContent(access_token, today, ['LANDSCAPES'])
+        .catch(() => [] as Awaited<ReturnType<typeof searchPhotosByDateAndContent>>);
       let selectedSource = 'landscape';
 
-      if (landscapePhotos.length === 0) {
-        landscapePhotos = await searchPhotosByDate(access_token, today);
-        selectedSource = 'any';
+      if (photos.length === 0) {
+        photos = await searchPhotosByDate(access_token, today).catch(() => []);
+        selectedSource = 'date';
       }
 
-      if (landscapePhotos.length > 0) {
-        const { buffer } = await downloadPhotoAsBuffer(
-          landscapePhotos[0].baseUrl,
-          access_token
-        );
+      if (photos.length === 0) {
+        photos = await listRecentPhotos(access_token, 5).catch(() => []);
+        selectedSource = 'recent';
+      }
+
+      if (photos.length > 0) {
+        const { buffer } = await downloadPhotoAsBuffer(photos[0].baseUrl, access_token);
         photoBuffer = buffer;
         photoUrl = await uploadImage(buffer, 'records');
-        log.push(
-          `Google Photos: uploaded ${selectedSource} photo ` +
-          `(${landscapePhotos.length} ${selectedSource} found for ${todayStr})`
-        );
+        log.push(`Google Photos: uploaded ${selectedSource} photo`);
       } else {
-        log.push('Google Photos: no photos for today');
+        log.push('Google Photos: no photos available');
       }
     } else {
-      log.push('Google Photos: not connected (no refresh_token)');
+      log.push('Google Photos: not connected');
     }
   } catch (err: unknown) {
     log.push(`Google Photos error: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // ------------------------------------------------------------------
-  // 4. Create RunLog running record
+  // 3. Create RunLog running record
   // ------------------------------------------------------------------
   let recordId: number | null = null;
   try {
     const record = await runningRecords.create({
       user_id: AUTO_SYNC_USER_ID,
-      title: garminActivity.activityName || `Running ${todayStr}`,
-      content: buildRecordContent(garminActivity),
+      title: activity.activityName || `Running ${todayStr}`,
+      content: buildRecordContent(activity),
       image_url: photoUrl,
-      distance: garminActivity.distanceKm || null,
-      duration: garminActivity.durationMinutes || null,
+      distance: activity.distanceKm || null,
+      duration: activity.durationMinutes || null,
       record_date: todayStr,
-      burned_calories: garminActivity.calories || null,
-      sleep_hours: sleepHours,
+      burned_calories: activity.calories || null,
+      sleep_hours: null,
       visibility: 'public',
     });
     recordId = record.id;
@@ -151,7 +163,7 @@ export async function GET(request: NextRequest) {
   }
 
   // ------------------------------------------------------------------
-  // 5. Instagram: generate card image & publish
+  // 4. Instagram: generate card image & publish
   // ------------------------------------------------------------------
   let igMediaId: string | null = null;
   try {
@@ -159,16 +171,14 @@ export async function GET(request: NextRequest) {
     if (igToken?.access_token && igToken.extra_data) {
       let accessToken = igToken.access_token;
 
-      // Fetch correct user ID from /me to avoid JS number precision issues
       const meRes = await fetch(
         `https://graph.instagram.com/me?fields=id&access_token=${accessToken}`
       );
       const meData = (await meRes.json()) as { id?: string; error?: unknown };
       const igUserId = meData.id;
       if (!igUserId) {
-        log.push(`Instagram: failed to get user ID from /me: ${JSON.stringify(meData)}`);
+        log.push(`Instagram: failed to get user ID: ${JSON.stringify(meData)}`);
       } else {
-        // Fix stored ID if corrupted by JS number precision loss
         const storedId = String((igToken.extra_data as { ig_user_id?: string | number }).ig_user_id || '');
         if (storedId !== igUserId) {
           await userTokens.upsert({
@@ -178,10 +188,8 @@ export async function GET(request: NextRequest) {
             token_expires_at: igToken.token_expires_at,
             extra_data: { ig_user_id: igUserId },
           });
-          log.push(`Instagram: corrected ig_user_id ${storedId} → ${igUserId}`);
         }
 
-        // Auto-refresh if token expires within 7 days
         const expiresAt = igToken.token_expires_at
           ? new Date(igToken.token_expires_at).getTime()
           : 0;
@@ -193,9 +201,7 @@ export async function GET(request: NextRequest) {
               user_id: AUTO_SYNC_USER_ID,
               provider: 'instagram',
               access_token: accessToken,
-              token_expires_at: new Date(
-                Date.now() + refreshed.expires_in * 1000
-              ).toISOString(),
+              token_expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
               extra_data: { ig_user_id: igUserId },
             });
             log.push('Instagram: token refreshed');
@@ -204,12 +210,11 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Generate Instagram card image
-        const cardBuffer = await generateInstagramCard(garminActivity, photoBuffer);
+        const cardBuffer = await generateInstagramCard(activity, photoBuffer);
         const cardUrl = await uploadImage(cardBuffer, 'records');
 
         if (cardUrl) {
-          const caption = buildInstagramCaption(garminActivity, todayStr);
+          const caption = buildInstagramCaption(activity, todayStr);
           igMediaId = await publishImagePost(igUserId, accessToken, cardUrl, caption);
           log.push(`Instagram: published media ${igMediaId}`);
         } else {
@@ -232,7 +237,7 @@ export async function GET(request: NextRequest) {
   });
 }
 
-function buildRecordContent(a: Awaited<ReturnType<typeof fetchTodayActivities>>[number]): string {
+function buildRecordContent(a: StravaActivitySummary): string {
   const parts: string[] = [];
   if (a.distanceKm > 0) parts.push(`거리: ${a.distanceKm}km`);
   if (a.durationMinutes > 0) {
@@ -248,14 +253,11 @@ function buildRecordContent(a: Awaited<ReturnType<typeof fetchTodayActivities>>[
   if (a.calories > 0) parts.push(`소모 칼로리: ${a.calories}kcal`);
   if (a.averageHR > 0) parts.push(`평균 심박: ${a.averageHR}bpm`);
   if (a.elevationGain > 0) parts.push(`고도 상승: ${a.elevationGain}m`);
-  parts.push('(Garmin 자동 동기화)');
+  parts.push('(Strava 자동 동기화)');
   return parts.join('\n');
 }
 
-function buildInstagramCaption(
-  a: Awaited<ReturnType<typeof fetchTodayActivities>>[number],
-  dateStr: string
-): string {
+function buildInstagramCaption(a: StravaActivitySummary, dateStr: string): string {
   const parts: string[] = [];
   parts.push(`🏃 ${a.activityName}`);
   parts.push(`📅 ${dateStr}`);
@@ -267,6 +269,6 @@ function buildInstagramCaption(
   }
   if (a.calories > 0) parts.push(`🔥 ${a.calories}kcal`);
   parts.push('');
-  parts.push('#RunLog #running #러닝 #달리기 #garmin');
+  parts.push('#RunLog #running #러닝 #달리기 #strava');
   return parts.join('\n');
 }

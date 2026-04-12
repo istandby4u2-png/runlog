@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Watch,
+  Activity,
   ImageIcon,
   Instagram,
   CheckCircle,
@@ -100,6 +100,7 @@ function SettingsContent() {
       {success && (
         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded flex items-center gap-2 text-green-800 text-sm">
           <CheckCircle className="w-4 h-4 shrink-0" />
+          {success === 'strava' && 'Strava 연결 완료!'}
           {success === 'google_photos' && 'Google Photos 연결 완료!'}
           {success === 'instagram' && 'Instagram 연결 완료!'}
         </div>
@@ -125,14 +126,14 @@ function SettingsContent() {
         <div className="text-center py-8 text-gray-500">로딩 중...</div>
       ) : (
         <div className="space-y-4">
-          {/* Garmin */}
+          {/* Strava */}
           <ServiceCard
-            icon={<Watch className="w-6 h-6" />}
-            name="Garmin Connect"
-            description="러닝 기록 자동 가져오기 (거리, 시간, 심박, 칼로리)"
-            connected={connections?.garmin?.connected ?? false}
-            connectUrl={null}
-            envBased
+            icon={<Activity className="w-6 h-6" />}
+            name="Strava"
+            description="러닝 기록 자동 가져오기 (거리, 시간, 심박, 칼로리, 페이스)"
+            connected={connections?.strava?.connected ?? false}
+            connectUrl="/api/oauth/strava"
+            expiryLabel={formatExpiry(connections?.strava?.expiresAt)}
           />
 
           {/* Google Photos */}

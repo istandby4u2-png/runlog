@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserIdFromRequest } from '@/lib/auth';
 import {
+  type PickedMediaItem,
   refreshAccessToken,
   createPickerSession,
   getPickerSession,
@@ -8,6 +9,7 @@ import {
   downloadPhotoAsBuffer,
   deletePickerSession,
   PickerListNotReadyError,
+  PickerListSessionNotFoundError,
 } from '@/lib/google-photos-api';
 import { userTokens, pickedPhotos } from '@/lib/db-supabase';
 import { uploadImage } from '@/lib/blob-storage';
@@ -72,8 +74,8 @@ export async function GET(request: NextRequest) {
   }
 
   const sp = request.nextUrl.searchParams;
-  const sessionId = sp.get('sessionId');
-  const photoDate = sp.get('date');
+  const sessionId = sp.get('sessionId')?.trim() ?? '';
+  const photoDate = sp.get('date')?.trim() ?? '';
 
   if (!sessionId || !photoDate) {
     return NextResponse.json(
@@ -101,26 +103,38 @@ export async function GET(request: NextRequest) {
       token_expires_at: new Date(Date.now() + 3500 * 1000).toISOString(),
     });
 
-    const session = await getPickerSession(accessToken, sessionId);
-
-    if (session && session.mediaItemsSet === false) {
-      return NextResponse.json({
-        status: 'waiting',
-        pollingConfig: session.pollingConfig,
-      });
-    }
-
-    let items;
+    // 공식 가이드: 선택 완료 후 sessions.get 이 먼저 사라질 수 있음 → mediaItems.list 를 우선 시도
+    let items: PickedMediaItem[];
     try {
       items = await listPickedMediaItems(accessToken, sessionId);
     } catch (e) {
       if (e instanceof PickerListNotReadyError) {
-        return NextResponse.json({
-          status: 'waiting',
-          pollingConfig: session?.pollingConfig,
-        });
+        const session = await getPickerSession(accessToken, sessionId);
+        if (session?.mediaItemsSet === true) {
+          items = await listPickedMediaItems(accessToken, sessionId);
+        } else {
+          return NextResponse.json({
+            status: 'waiting',
+            pollingConfig: session?.pollingConfig,
+          });
+        }
+      } else if (e instanceof PickerListSessionNotFoundError) {
+        const session = await getPickerSession(accessToken, sessionId);
+        if (session?.mediaItemsSet === true) {
+          items = await listPickedMediaItems(accessToken, sessionId);
+        } else {
+          return NextResponse.json(
+            {
+              error:
+                '피커 세션을 찾을 수 없습니다. RunLog에 연결한 Google 계정과 피커를 연 브라우저의 Google 계정이 같은지 확인한 뒤 다시 시도해 주세요.',
+              code: 'PICKER_SESSION_NOT_FOUND',
+            },
+            { status: 410 }
+          );
+        }
+      } else {
+        throw e;
       }
-      throw e;
     }
     if (items.length === 0) {
       return NextResponse.json({ status: 'empty', message: '사진이 선택되지 않았습니다.' });

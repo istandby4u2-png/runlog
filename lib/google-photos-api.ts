@@ -137,6 +137,54 @@ export class PickerListNotReadyError extends Error {
   }
 }
 
+/** Thrown when mediaItems.list returns 404 — session unknown or wrong account / expired. */
+export class PickerListSessionNotFoundError extends Error {
+  constructor(public readonly bodyText: string) {
+    super('PICKER_LIST_NOT_FOUND');
+    this.name = 'PickerListSessionNotFoundError';
+  }
+}
+
+/**
+ * Normalize sessions.create JSON — id may be under `name` or only in pickerUri query.
+ */
+export function pickingSessionFromCreateResponse(raw: unknown): PickerSession {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('Picker 세션 응답 형식이 올바르지 않습니다.');
+  }
+  const o = raw as Record<string, unknown>;
+  let id = typeof o.id === 'string' ? o.id.trim() : '';
+  const name = typeof o.name === 'string' ? o.name.trim() : '';
+  if (!id && name) {
+    id = name.replace(/^sessions\//, '').trim();
+  }
+  const pickerUri = typeof o.pickerUri === 'string' ? o.pickerUri.trim() : '';
+  if (!id && pickerUri) {
+    try {
+      const u = new URL(pickerUri);
+      const cand =
+        u.searchParams.get('sessionId') ||
+        u.searchParams.get('session_id') ||
+        u.searchParams.get('sid') ||
+        u.searchParams.get('s');
+      if (cand) id = cand.trim();
+    } catch {
+      // ignore
+    }
+  }
+  if (!id) {
+    throw new Error(
+      'Picker 세션 ID를 응답에서 찾을 수 없습니다. Google Cloud에서 Photos Picker API가 활성화되어 있는지 확인해 주세요.'
+    );
+  }
+  return {
+    id,
+    pickerUri,
+    pollingConfig: o.pollingConfig as PickerSession['pollingConfig'],
+    mediaItemsSet: Boolean(o.mediaItemsSet),
+  };
+}
+
 function normalizePickerSessionId(sessionId: string): string {
   return sessionId.replace(/^sessions\//, '').trim();
 }
@@ -169,7 +217,8 @@ export async function createPickerSession(accessToken: string): Promise<PickerSe
     }
     throw new Error(`Picker session create failed (${res.status}): ${text}`);
   }
-  return (await res.json()) as PickerSession;
+  const raw = await res.json();
+  return pickingSessionFromCreateResponse(raw);
 }
 
 /**
@@ -215,6 +264,9 @@ export async function listPickedMediaItems(
       const text = await res.text();
       if (isMediaListFailedPrecondition(res.status, text)) {
         throw new PickerListNotReadyError();
+      }
+      if (res.status === 404) {
+        throw new PickerListSessionNotFoundError(text);
       }
       throw new Error(`Picker list media failed (${res.status}): ${text}`);
     }

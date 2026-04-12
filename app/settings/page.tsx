@@ -253,6 +253,9 @@ function PhotoPicker() {
       if (!res.ok) throw new Error(data.error || 'Session 생성 실패');
 
       const { sessionId, pickerUri: uri } = data;
+      if (typeof sessionId !== 'string' || !sessionId.trim()) {
+        throw new Error('세션 ID를 받지 못했습니다.');
+      }
       setPickerUri(uri);
       setPickerState('picking');
 
@@ -281,7 +284,7 @@ function PhotoPicker() {
         } catch {
           // keep polling
         }
-      }, 3000);
+      }, 1500);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : String(err));
       setPickerState('error');

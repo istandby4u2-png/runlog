@@ -63,14 +63,18 @@ export function GooglePhotosPicker({
       }
       if (!res.ok) throw new Error(data.error || 'Session 생성 실패');
 
-      sessionRef.current = data.sessionId;
+      const sessionId = data.sessionId;
+      if (typeof sessionId !== 'string' || !sessionId.trim()) {
+        throw new Error('세션 ID를 받지 못했습니다.');
+      }
+      sessionRef.current = sessionId;
       setPickerUri(data.pickerUri);
       window.open(data.pickerUri, '_blank');
 
       pollingRef.current = setInterval(async () => {
         try {
           const pollRes = await fetch(
-            `/api/photos/picker?sessionId=${encodeURIComponent(sessionRef.current ?? '')}&date=${encodeURIComponent(today)}`
+            `/api/photos/picker?sessionId=${encodeURIComponent(sessionId)}&date=${encodeURIComponent(today)}`
           );
           const pollText = await pollRes.text();
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -109,7 +113,7 @@ export function GooglePhotosPicker({
         } catch {
           // keep polling
         }
-      }, 3000);
+      }, 1500);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '초기화 실패';
       setPickerError(msg);

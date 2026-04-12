@@ -11,7 +11,7 @@ import {
   PickerListNotReadyError,
   PickerListSessionNotFoundError,
 } from '@/lib/google-photos-api';
-import { userTokens, pickedPhotos } from '@/lib/db-supabase';
+import { userTokens, pickedPhotos, googlePickerSessions } from '@/lib/db-supabase';
 import { uploadImage } from '@/lib/blob-storage';
 
 export const dynamic = 'force-dynamic';
@@ -53,6 +53,21 @@ export async function POST(request: NextRequest) {
     });
 
     const session = await createPickerSession(access_token);
+
+    const tokenExpIso = new Date(Date.now() + 3500 * 1000).toISOString();
+    try {
+      await googlePickerSessions.upsert({
+        session_id: session.id,
+        user_id: userId,
+        access_token,
+        access_token_expires_at: tokenExpIso,
+      });
+    } catch (persistErr) {
+      console.error(
+        '[POST /api/photos/picker] google_picker_sessions 저장 실패 (마이그레이션 미적용 가능):',
+        persistErr
+      );
+    }
 
     return NextResponse.json({
       sessionId: session.id,
@@ -96,25 +111,55 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let accessToken = gpToken.access_token ?? '';
-    const expiresAtMs = gpToken.token_expires_at
-      ? new Date(gpToken.token_expires_at).getTime()
-      : 0;
-    const mustRefresh =
-      !accessToken ||
-      !expiresAtMs ||
-      expiresAtMs - Date.now() < ACCESS_TOKEN_REFRESH_IF_EXPIRES_WITHIN_MS;
+    const bound = await googlePickerSessions.find(sessionId, userId);
 
-    if (mustRefresh) {
-      const refreshed = await refreshAccessToken(gpToken.refresh_token);
-      accessToken = refreshed.access_token;
-      await userTokens.upsert({
-        user_id: userId,
-        provider: 'google_photos',
-        access_token: accessToken,
-        refresh_token: gpToken.refresh_token,
-        token_expires_at: new Date(Date.now() + 3500 * 1000).toISOString(),
-      });
+    let accessToken: string;
+    if (bound) {
+      accessToken = bound.access_token;
+      const boundExp = new Date(bound.access_token_expires_at).getTime();
+      if (
+        boundExp - Date.now() <
+        ACCESS_TOKEN_REFRESH_IF_EXPIRES_WITHIN_MS
+      ) {
+        const refreshed = await refreshAccessToken(gpToken.refresh_token);
+        accessToken = refreshed.access_token;
+        const newExp = new Date(Date.now() + 3500 * 1000).toISOString();
+        await userTokens.upsert({
+          user_id: userId,
+          provider: 'google_photos',
+          access_token: accessToken,
+          refresh_token: gpToken.refresh_token,
+          token_expires_at: newExp,
+        });
+        await googlePickerSessions.updateToken(
+          sessionId,
+          userId,
+          accessToken,
+          newExp
+        );
+      }
+    } else {
+      let at = gpToken.access_token ?? '';
+      const expiresAtMs = gpToken.token_expires_at
+        ? new Date(gpToken.token_expires_at).getTime()
+        : 0;
+      const mustRefresh =
+        !at ||
+        !expiresAtMs ||
+        expiresAtMs - Date.now() < ACCESS_TOKEN_REFRESH_IF_EXPIRES_WITHIN_MS;
+
+      if (mustRefresh) {
+        const refreshed = await refreshAccessToken(gpToken.refresh_token);
+        at = refreshed.access_token;
+        await userTokens.upsert({
+          user_id: userId,
+          provider: 'google_photos',
+          access_token: at,
+          refresh_token: gpToken.refresh_token,
+          token_expires_at: new Date(Date.now() + 3500 * 1000).toISOString(),
+        });
+      }
+      accessToken = at;
     }
 
     // 공식 가이드: 선택 완료 후 sessions.get 이 먼저 사라질 수 있음 → mediaItems.list 를 우선 시도
@@ -137,10 +182,11 @@ export async function GET(request: NextRequest) {
         if (session?.mediaItemsSet === true) {
           items = await listPickedMediaItems(accessToken, sessionId);
         } else {
+          await googlePickerSessions.delete(sessionId).catch(() => {});
           return NextResponse.json(
             {
               error:
-                '피커 세션을 찾을 수 없습니다. 시간이 지나 세션이 끝났을 수 있으니 «사진 선택»을 다시 눌러 주세요. 계속되면 브라우저에서 photos.google.com 에 로그인한 계정이 RunLog 설정과 같은지 확인해 주세요.',
+                '피커 세션을 찾을 수 없습니다. «사진 선택»을 다시 눌러 주세요. 잠시 후에도 같으면 새로고침 후 재시도해 주세요.',
               code: 'PICKER_SESSION_NOT_FOUND',
             },
             { status: 410 }
@@ -151,6 +197,7 @@ export async function GET(request: NextRequest) {
       }
     }
     if (items.length === 0) {
+      await googlePickerSessions.delete(sessionId).catch(() => {});
       return NextResponse.json({ status: 'empty', message: '사진이 선택되지 않았습니다.' });
     }
 
@@ -162,12 +209,14 @@ export async function GET(request: NextRequest) {
     const blobUrl = await uploadImage(buffer, 'records');
 
     if (!blobUrl) {
+      await googlePickerSessions.delete(sessionId).catch(() => {});
       return NextResponse.json({ error: '사진 업로드에 실패했습니다.' }, { status: 500 });
     }
 
     await pickedPhotos.upsert(userId, photoDate, blobUrl);
 
     await deletePickerSession(accessToken, sessionId).catch(() => {});
+    await googlePickerSessions.delete(sessionId).catch(() => {});
 
     return NextResponse.json({
       status: 'done',

@@ -920,3 +920,95 @@ export const userTokens = {
     return data || [];
   }
 };
+
+/** Picker API: 세션 생성 시 사용한 access_token을 session_id에 묶어 저장 (user_tokens 덮어쓰기와 무관) */
+export const googlePickerSessions = {
+  async upsert(row: {
+    session_id: string;
+    user_id: number;
+    access_token: string;
+    access_token_expires_at: string;
+  }) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { error } = await supabaseAdmin.from('google_picker_sessions').upsert(
+      {
+        session_id: row.session_id,
+        user_id: row.user_id,
+        access_token: row.access_token,
+        access_token_expires_at: row.access_token_expires_at,
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: 'session_id' }
+    );
+    if (error) {
+      console.error('google_picker_sessions upsert error:', error);
+      throw error;
+    }
+  },
+
+  async find(
+    sessionId: string,
+    userId: number
+  ): Promise<{
+    session_id: string;
+    user_id: number;
+    access_token: string;
+    access_token_expires_at: string;
+  } | null> {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { data, error } = await supabaseAdmin
+      .from('google_picker_sessions')
+      .select('*')
+      .eq('session_id', sessionId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('google_picker_sessions find error:', error);
+      return null;
+    }
+    return data;
+  },
+
+  async updateToken(
+    sessionId: string,
+    userId: number,
+    accessToken: string,
+    accessTokenExpiresAt: string
+  ) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { error } = await supabaseAdmin
+      .from('google_picker_sessions')
+      .update({
+        access_token: accessToken,
+        access_token_expires_at: accessTokenExpiresAt,
+      })
+      .eq('session_id', sessionId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('google_picker_sessions updateToken error:', error);
+      throw error;
+    }
+  },
+
+  async delete(sessionId: string) {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { error } = await supabaseAdmin
+      .from('google_picker_sessions')
+      .delete()
+      .eq('session_id', sessionId);
+
+    if (error) {
+      console.error('google_picker_sessions delete error:', error);
+    }
+  },
+};

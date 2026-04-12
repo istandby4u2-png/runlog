@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getUserIdFromRequest } from '@/lib/auth';
 import { fetchActivitiesByDate, fetchSleepData } from '@/lib/garmin-api';
 import {
   refreshAccessToken,
@@ -14,30 +15,20 @@ import { generateInstagramCard } from '@/lib/instagram-image';
 import { runningRecords, userTokens } from '@/lib/db-supabase';
 import { uploadImage } from '@/lib/blob-storage';
 
-const AUTO_SYNC_USER_ID = parseInt(process.env.AUTO_SYNC_USER_ID || '0', 10);
-const CRON_SECRET = process.env.CRON_SECRET;
-
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 /**
  * Manual test endpoint: GET /api/cron/test-sync?date=2026-03-09
- * Runs the full daily-sync pipeline for a specific date.
+ * Requires user login (no CRON_SECRET needed).
  */
 export async function GET(request: NextRequest) {
-  if (CRON_SECRET) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${CRON_SECRET}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  const userId = getUserIdFromRequest();
+  if (!userId) {
+    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
   }
 
-  if (!AUTO_SYNC_USER_ID) {
-    return NextResponse.json(
-      { error: 'AUTO_SYNC_USER_ID not configured' },
-      { status: 500 }
-    );
-  }
+  const syncUserId = userId;
 
   const dateParam = request.nextUrl.searchParams.get('date');
   if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
@@ -95,12 +86,12 @@ export async function GET(request: NextRequest) {
   let photoUrl: string | null = null;
   let photoBuffer: Buffer | null = null;
   try {
-    const gpToken = await userTokens.findByProvider(AUTO_SYNC_USER_ID, 'google_photos');
+    const gpToken = await userTokens.findByProvider(syncUserId, 'google_photos');
     if (gpToken?.refresh_token) {
       const { access_token } = await refreshAccessToken(gpToken.refresh_token);
 
       await userTokens.upsert({
-        user_id: AUTO_SYNC_USER_ID,
+        user_id: syncUserId,
         provider: 'google_photos',
         access_token,
         refresh_token: gpToken.refresh_token,
@@ -139,7 +130,7 @@ export async function GET(request: NextRequest) {
   let recordId: number | null = null;
   try {
     const record = await runningRecords.create({
-      user_id: AUTO_SYNC_USER_ID,
+      user_id: syncUserId,
       title: garminActivity.activityName || `Running ${dateStr}`,
       content: buildRecordContent(garminActivity),
       image_url: photoUrl,
@@ -161,7 +152,7 @@ export async function GET(request: NextRequest) {
   // ------------------------------------------------------------------
   let igMediaId: string | null = null;
   try {
-    const igToken = await userTokens.findByProvider(AUTO_SYNC_USER_ID, 'instagram');
+    const igToken = await userTokens.findByProvider(syncUserId, 'instagram');
     if (igToken?.access_token && igToken.extra_data) {
       const igUserId = (igToken.extra_data as { ig_user_id?: string }).ig_user_id;
       if (!igUserId) {
@@ -177,7 +168,7 @@ export async function GET(request: NextRequest) {
             const refreshed = await refreshLongLivedToken(accessToken);
             accessToken = refreshed.access_token;
             await userTokens.upsert({
-              user_id: AUTO_SYNC_USER_ID,
+              user_id: syncUserId,
               provider: 'instagram',
               access_token: accessToken,
               token_expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),

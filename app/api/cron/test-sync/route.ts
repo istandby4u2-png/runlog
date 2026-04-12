@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserIdFromRequest } from '@/lib/auth';
+import type { GarminActivitySummary } from '@/lib/garmin-api';
 import { fetchActivitiesByDate, fetchSleepData } from '@/lib/garmin-api';
 import {
   refreshAccessToken,
@@ -19,8 +20,13 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 /**
- * Manual test endpoint: GET /api/cron/test-sync?date=2026-03-09
- * Requires user login (no CRON_SECRET needed).
+ * Manual test endpoint.
+ *
+ * Usage:
+ *   /api/cron/test-sync?date=2026-03-09
+ *   /api/cron/test-sync?date=2026-03-09&dist=10.5&dur=55&pace=5.2&cal=520&title=Morning+Run
+ *
+ * When Garmin login fails (MFA), you can supply activity data via query params.
  */
 export async function GET(request: NextRequest) {
   const userId = getUserIdFromRequest();
@@ -28,9 +34,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
   }
 
-  const syncUserId = userId;
-
-  const dateParam = request.nextUrl.searchParams.get('date');
+  const sp = request.nextUrl.searchParams;
+  const dateParam = sp.get('date');
   if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
     return NextResponse.json(
       { error: 'date query parameter required (YYYY-MM-DD format)' },
@@ -43,55 +48,92 @@ export async function GET(request: NextRequest) {
   const log: string[] = [`Target date: ${dateStr}`];
 
   // ------------------------------------------------------------------
-  // 1. Garmin: fetch activities for the target date
+  // 1. Activity data: try Garmin first, fall back to query params
   // ------------------------------------------------------------------
-  let garminActivity: Awaited<ReturnType<typeof fetchActivitiesByDate>>[number] | null = null;
+  let activity: GarminActivitySummary | null = null;
+  let sleepHours: number | null = null;
+
   try {
     const activities = await fetchActivitiesByDate(dateStr);
     if (activities.length > 0) {
-      garminActivity = activities[0];
+      activity = activities[0];
       log.push(
         `Garmin: found ${activities.length} activity(ies) — ` +
-        `${garminActivity.activityName} ${garminActivity.distanceKm}km`
+        `${activity.activityName} ${activity.distanceKm}km`
       );
     } else {
       log.push(`Garmin: no running activities for ${dateStr}`);
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    log.push(`Garmin error: ${msg}`);
+    log.push(`Garmin error (falling back to manual data): ${msg}`);
   }
 
-  if (!garminActivity) {
-    return NextResponse.json({ ok: true, log, synced: false });
-  }
-
-  // ------------------------------------------------------------------
-  // 2. Garmin: fetch sleep data
-  // ------------------------------------------------------------------
-  let sleepHours: number | null = null;
-  try {
-    const sleep = await fetchSleepData(targetDate);
-    if (sleep) {
-      sleepHours = Math.round(sleep.hours * 10) / 10;
-      log.push(`Garmin sleep: ${sleepHours}h`);
+  if (activity) {
+    try {
+      const sleep = await fetchSleepData(targetDate);
+      if (sleep) {
+        sleepHours = Math.round(sleep.hours * 10) / 10;
+        log.push(`Garmin sleep: ${sleepHours}h`);
+      }
+    } catch {
+      log.push('Garmin sleep: unavailable');
     }
-  } catch (err: unknown) {
-    log.push(`Garmin sleep error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Fall back to query params if Garmin failed
+  if (!activity) {
+    const dist = parseFloat(sp.get('dist') || '');
+    const dur = parseInt(sp.get('dur') || '', 10);
+
+    if (!dist || !dur) {
+      return NextResponse.json({
+        ok: false,
+        error: 'Garmin 로그인 실패. 수동 데이터를 쿼리 파라미터로 전달해주세요.',
+        usage: '/api/cron/test-sync?date=2026-03-09&dist=10.5&dur=55&pace=5.2&cal=520&title=Morning+Run',
+        params: {
+          dist: '거리(km) - 필수',
+          dur: '시간(분) - 필수',
+          pace: '평균 페이스(분/km)',
+          cal: '소모 칼로리',
+          title: '활동 이름',
+        },
+        log,
+      });
+    }
+
+    const pace = parseFloat(sp.get('pace') || '') || null;
+    const cal = parseInt(sp.get('cal') || '', 10) || 0;
+    const title = sp.get('title') || `Running ${dateStr}`;
+
+    activity = {
+      activityId: 0,
+      activityName: title,
+      startTimeLocal: `${dateStr} 07:00:00`,
+      distanceKm: Math.round(dist * 100) / 100,
+      durationMinutes: dur,
+      calories: cal,
+      averageHR: 0,
+      maxHR: 0,
+      elevationGain: 0,
+      averagePaceMinPerKm: pace,
+      locationName: '',
+    };
+    log.push(`Manual data: ${title} ${dist}km ${dur}min`);
   }
 
   // ------------------------------------------------------------------
-  // 3. Google Photos: fetch landscape photo for the target date
+  // 2. Google Photos: landscape photo for the target date
   // ------------------------------------------------------------------
   let photoUrl: string | null = null;
   let photoBuffer: Buffer | null = null;
   try {
-    const gpToken = await userTokens.findByProvider(syncUserId, 'google_photos');
+    const gpToken = await userTokens.findByProvider(userId, 'google_photos');
     if (gpToken?.refresh_token) {
       const { access_token } = await refreshAccessToken(gpToken.refresh_token);
 
       await userTokens.upsert({
-        user_id: syncUserId,
+        user_id: userId,
         provider: 'google_photos',
         access_token,
         refresh_token: gpToken.refresh_token,
@@ -125,19 +167,19 @@ export async function GET(request: NextRequest) {
   }
 
   // ------------------------------------------------------------------
-  // 4. Create RunLog running record
+  // 3. Create RunLog running record
   // ------------------------------------------------------------------
   let recordId: number | null = null;
   try {
     const record = await runningRecords.create({
-      user_id: syncUserId,
-      title: garminActivity.activityName || `Running ${dateStr}`,
-      content: buildRecordContent(garminActivity),
+      user_id: userId,
+      title: activity.activityName || `Running ${dateStr}`,
+      content: buildRecordContent(activity),
       image_url: photoUrl,
-      distance: garminActivity.distanceKm || null,
-      duration: garminActivity.durationMinutes || null,
+      distance: activity.distanceKm || null,
+      duration: activity.durationMinutes || null,
       record_date: dateStr,
-      burned_calories: garminActivity.calories || null,
+      burned_calories: activity.calories || null,
       sleep_hours: sleepHours,
       visibility: 'public',
     });
@@ -148,11 +190,11 @@ export async function GET(request: NextRequest) {
   }
 
   // ------------------------------------------------------------------
-  // 5. Instagram: generate card image & publish
+  // 4. Instagram: generate card image & publish
   // ------------------------------------------------------------------
   let igMediaId: string | null = null;
   try {
-    const igToken = await userTokens.findByProvider(syncUserId, 'instagram');
+    const igToken = await userTokens.findByProvider(userId, 'instagram');
     if (igToken?.access_token && igToken.extra_data) {
       const igUserId = (igToken.extra_data as { ig_user_id?: string }).ig_user_id;
       if (!igUserId) {
@@ -168,7 +210,7 @@ export async function GET(request: NextRequest) {
             const refreshed = await refreshLongLivedToken(accessToken);
             accessToken = refreshed.access_token;
             await userTokens.upsert({
-              user_id: syncUserId,
+              user_id: userId,
               provider: 'instagram',
               access_token: accessToken,
               token_expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
@@ -180,11 +222,11 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        const cardBuffer = await generateInstagramCard(garminActivity, photoBuffer);
+        const cardBuffer = await generateInstagramCard(activity, photoBuffer);
         const cardUrl = await uploadImage(cardBuffer, 'records');
 
         if (cardUrl) {
-          const caption = buildInstagramCaption(garminActivity, dateStr);
+          const caption = buildInstagramCaption(activity, dateStr);
           igMediaId = await publishImagePost(igUserId, accessToken, cardUrl, caption);
           log.push(`Instagram: published media ${igMediaId}`);
         } else {
@@ -208,7 +250,7 @@ export async function GET(request: NextRequest) {
   });
 }
 
-function buildRecordContent(a: Awaited<ReturnType<typeof fetchActivitiesByDate>>[number]): string {
+function buildRecordContent(a: GarminActivitySummary): string {
   const parts: string[] = [];
   if (a.distanceKm > 0) parts.push(`거리: ${a.distanceKm}km`);
   if (a.durationMinutes > 0) {
@@ -228,10 +270,7 @@ function buildRecordContent(a: Awaited<ReturnType<typeof fetchActivitiesByDate>>
   return parts.join('\n');
 }
 
-function buildInstagramCaption(
-  a: Awaited<ReturnType<typeof fetchActivitiesByDate>>[number],
-  dateStr: string
-): string {
+function buildInstagramCaption(a: GarminActivitySummary, dateStr: string): string {
   const parts: string[] = [];
   parts.push(`🏃 ${a.activityName}`);
   parts.push(`📅 ${dateStr}`);

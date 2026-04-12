@@ -13,7 +13,7 @@ const META_APP_ID = process.env.META_APP_ID || '';
 const META_APP_SECRET = process.env.META_APP_SECRET || '';
 const INSTAGRAM_REDIRECT_URI =
   process.env.INSTAGRAM_REDIRECT_URI || 'https://runlog.life/api/oauth/instagram/callback';
-const GRAPH_API_VERSION = 'v25.0';
+const GRAPH_API_VERSION = 'v22.0';
 
 // ---------------------------------------------------------------------------
 // OAuth helpers

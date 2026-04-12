@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { StravaActivitySummary } from '@/lib/strava-api';
 import {
   getValidAccessToken,
-  fetchTodayActivities,
+  fetchActivitiesByDate,
 } from '@/lib/strava-api';
 import {
   publishImagePost,
@@ -32,13 +32,20 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const log: string[] = [];
-  const todayStr = new Date(
+  const dateParam = request.nextUrl.searchParams.get('date');
+  const kstToday = new Date(
     new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })
   ).toISOString().slice(0, 10);
+  const todayStr =
+    dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : kstToday;
+
+  const log: string[] = [];
+  if (dateParam && todayStr === dateParam) {
+    log.push(`날짜 지정: ${todayStr} (KST 오늘: ${kstToday})`);
+  }
 
   // ------------------------------------------------------------------
-  // 1. Strava: fetch today's running activities
+  // 1. Strava: fetch running activities for sync date (KST calendar day)
   // ------------------------------------------------------------------
   let activity: StravaActivitySummary | null = null;
   try {
@@ -66,7 +73,7 @@ export async function GET(request: NextRequest) {
       log.push('Strava: token refreshed');
     }
 
-    const activities = await fetchTodayActivities(valid.access_token);
+    const activities = await fetchActivitiesByDate(valid.access_token, todayStr);
     if (activities.length > 0) {
       activity = activities[0];
       log.push(

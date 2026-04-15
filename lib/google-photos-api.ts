@@ -23,6 +23,8 @@ export interface GooglePhotosMediaItem {
 
 export interface PickedMediaItem {
   id: string;
+  /** 촬영·생성 시각(RFC3339). 일괄 배정 시 KST 달력 날짜 계산에 사용 */
+  createTime?: string;
   type: 'PHOTO' | 'VIDEO';
   mediaFile: {
     baseUrl: string;
@@ -201,14 +203,24 @@ function isMediaListFailedPrecondition(status: number, body: string): boolean {
   );
 }
 
-export async function createPickerSession(accessToken: string): Promise<PickerSession> {
+/**
+ * @param opts.maxItemCount Google 기본 2000 — 일괄 선택 시 여유 있게 지정 가능
+ */
+export async function createPickerSession(
+  accessToken: string,
+  opts?: { maxItemCount?: number }
+): Promise<PickerSession> {
+  const body: Record<string, unknown> = {};
+  if (opts?.maxItemCount != null) {
+    body.pickingConfig = { maxItemCount: String(opts.maxItemCount) };
+  }
   const res = await fetch(`${PICKER_API_BASE}/sessions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: '{}',
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const text = await res.text();

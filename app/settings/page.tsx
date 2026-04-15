@@ -17,6 +17,7 @@ import {
   ExternalLink,
   Loader2,
   CalendarDays,
+  Layers,
 } from 'lucide-react';
 
 interface ConnectionStatus {
@@ -188,6 +189,7 @@ function SettingsContent() {
             선택하지 않으면 기본 그라데이션 배경이 사용됩니다.
           </p>
           <PhotoPicker />
+          <GooglePhotosBatchPicker />
         </div>
       )}
 
@@ -447,6 +449,7 @@ function PhotoPicker() {
       const res = await fetch('/api/photos/picker', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ date: photoDate }),
       });
       const data = await res.json();
@@ -464,7 +467,8 @@ function PhotoPicker() {
       pollingRef.current = setInterval(async () => {
         try {
           const pollRes = await fetch(
-            `/api/photos/picker?sessionId=${encodeURIComponent(sessionId)}&date=${encodeURIComponent(photoDate)}`
+            `/api/photos/picker?sessionId=${encodeURIComponent(sessionId)}&date=${encodeURIComponent(photoDate)}`,
+            { credentials: 'include' }
           );
           const pollData = await pollRes.json();
 
@@ -535,6 +539,173 @@ function PhotoPicker() {
             <p className="font-medium">사진 저장 완료!</p>
             <p className="text-xs text-green-600">{photoDate} 날짜로 저장되었습니다.</p>
           </div>
+        </div>
+      )}
+
+      {pickerState === 'error' && errorMsg && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {errorMsg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type BatchPickerResult = {
+  saved: number;
+  results?: { photoDate: string; blobUrl: string; mediaId: string }[];
+  skipped?: string[];
+  truncated?: boolean;
+  processed?: number;
+  photoItems?: number;
+};
+
+function GooglePhotosBatchPicker() {
+  const [pickerState, setPickerState] = useState<
+    'idle' | 'creating' | 'picking' | 'done' | 'error'
+  >('idle');
+  const [pickerUri, setPickerUri] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [batchResult, setBatchResult] = useState<BatchPickerResult | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const cleanup = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => cleanup, [cleanup]);
+
+  async function startBatch() {
+    setPickerState('creating');
+    setErrorMsg(null);
+    setBatchResult(null);
+    try {
+      const res = await fetch('/api/photos/picker', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ batch: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '세션 생성 실패');
+
+      const sessionId = data.sessionId as string | undefined;
+      const uri = data.pickerUri as string | undefined;
+      if (!sessionId?.trim() || !uri) {
+        throw new Error('세션 정보를 받지 못했습니다.');
+      }
+      setPickerUri(uri);
+      setPickerState('picking');
+      window.open(uri, '_blank');
+
+      pollingRef.current = setInterval(async () => {
+        try {
+          const pollRes = await fetch(
+            `/api/photos/picker?sessionId=${encodeURIComponent(sessionId)}&batch=1`,
+            { credentials: 'include' }
+          );
+          const pollData = await pollRes.json();
+
+          if (pollData.status === 'done' && pollData.batch) {
+            cleanup();
+            setPickerState('done');
+            setBatchResult({
+              saved: pollData.saved as number,
+              results: pollData.results as BatchPickerResult['results'],
+              skipped: pollData.skipped as string[] | undefined,
+              truncated: pollData.truncated as boolean | undefined,
+              processed: pollData.processed as number | undefined,
+              photoItems: pollData.photoItems as number | undefined,
+            });
+          } else if (pollData.status === 'empty') {
+            cleanup();
+            setPickerState('error');
+            setErrorMsg(
+              (pollData.message as string) || '선택된 사진이 없습니다.'
+            );
+          } else if (pollData.error) {
+            cleanup();
+            setPickerState('error');
+            setErrorMsg(pollData.error as string);
+          }
+        } catch {
+          // keep polling
+        }
+      }, 2000);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setPickerState('error');
+    }
+  }
+
+  return (
+    <div className="mt-6 pt-6 border-t border-gray-200 space-y-3">
+      <h3 className="text-sm font-semibold text-black">Google 포토 일괄 선택</h3>
+      <p className="text-sm text-gray-600 leading-relaxed">
+        한 번에 여러 장을 고르면, Google Photos에 저장된{' '}
+        <strong>촬영·생성 시각(createTime)</strong>을 기준으로 한국 날짜(KST)에 맞춰 각각 저장합니다.
+        같은 날짜에 여러 장이면 <strong>마지막으로 처리된 사진</strong>이 그날 배경이 됩니다. 동영상은 제외되고 사진만
+        저장됩니다. 많은 장을 선택하면 완료까지 1~2분 걸릴 수 있습니다.
+      </p>
+      <button
+        type="button"
+        onClick={startBatch}
+        disabled={pickerState === 'creating' || pickerState === 'picking'}
+        className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded hover:bg-black disabled:opacity-50 transition-colors text-sm"
+      >
+        {pickerState === 'creating' || pickerState === 'picking' ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <Layers className="w-4 h-4" />
+        )}
+        {pickerState === 'picking' ? '선택·업로드 처리 중…' : '일괄 선택 (여러 날짜)'}
+      </button>
+
+      {pickerState === 'picking' && pickerUri && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800 space-y-2">
+          <p>
+            Google Photos에서 사진을 여러 장 선택한 뒤 완료를 눌러주세요. 완료 후 서버가 장마다 업로드하므로
+            잠시 기다려 주세요.
+          </p>
+          <a
+            href={pickerUri}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-blue-600 underline"
+          >
+            Google Photos 열기 <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+      )}
+
+      {pickerState === 'done' && batchResult && (
+        <div className="p-3 bg-green-50 border border-green-200 rounded text-sm text-green-900 space-y-2">
+          <p className="font-medium">
+            일괄 저장 완료: {batchResult.saved}장
+            {batchResult.photoItems != null ? ` (사진 ${batchResult.photoItems}장 중 처리 ${batchResult.processed ?? batchResult.saved}장)` : ''}
+            {batchResult.truncated ? ' — 상한으로 일부만 처리했습니다.' : ''}
+          </p>
+          {batchResult.results && batchResult.results.length > 0 && (
+            <ul className="text-xs text-green-800 max-h-40 overflow-y-auto space-y-0.5 font-mono">
+              {batchResult.results.slice(0, 40).map((r, i) => (
+                <li key={`${r.mediaId}-${i}`}>
+                  {r.photoDate} — 저장됨
+                </li>
+              ))}
+              {batchResult.results.length > 40 && (
+                <li>… 외 {batchResult.results.length - 40}건</li>
+              )}
+            </ul>
+          )}
+          {batchResult.skipped && batchResult.skipped.length > 0 && (
+            <p className="text-xs text-amber-800">
+              건너뜀 {batchResult.skipped.length}건 (자세한 항목은 서버 로그 참고)
+            </p>
+          )}
         </div>
       )}
 

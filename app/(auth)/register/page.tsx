@@ -61,12 +61,17 @@ export default function RegisterPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-black mb-2">RunLog</h1>
-          <p className="text-gray-600">회원가입</p>
+          <p
+            className="text-gray-600"
+            data-i18n="register.title"
+          >
+            회원가입
+          </p>
         </div>
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-md">
           <div className="mb-4">
             <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
-              사용자 이름
+              <span data-i18n="register.usernameLabel">사용자 이름</span>
             </label>
             <input
               type="text"
@@ -79,7 +84,7 @@ export default function RegisterPage() {
           </div>
           <div className="mb-4">
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-              이메일
+              <span data-i18n="register.emailLabel">이메일</span>
             </label>
             <input
               type="email"
@@ -92,7 +97,7 @@ export default function RegisterPage() {
           </div>
           <div className="mb-4">
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-              비밀번호
+              <span data-i18n="register.passwordLabel">비밀번호</span>
             </label>
             <input
               type="password"
@@ -105,7 +110,7 @@ export default function RegisterPage() {
           </div>
           <div className="mb-6">
             <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
-              비밀번호 확인
+              <span data-i18n="register.passwordConfirmLabel">비밀번호 확인</span>
             </label>
             <input
               type="password"
@@ -129,8 +134,12 @@ export default function RegisterPage() {
             {loading ? '가입 중...' : '회원가입'}
           </button>
           <p className="mt-4 text-center text-sm text-gray-600">
-            이미 계정이 있으신가요?{' '}
-            <Link href="/login" className="text-black hover:underline">
+            <span data-i18n="register.hasAccount">이미 계정이 있으신가요?</span>{' '}
+            <Link
+              href="/login"
+              className="text-black hover:underline"
+              data-i18n="register.loginLink"
+            >
               로그인
             </Link>
           </p>

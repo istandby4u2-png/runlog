@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { Navigation } from '@/components/Navigation'
 import { Header } from '@/components/Header'
+import { I18nClient } from '@/components/I18nClient'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -27,6 +28,7 @@ export default function RootLayout({
     <html lang="ko">
       <body className={inter.className}>
         <div className="min-h-screen bg-gray-50 pb-20 pt-14">
+          <I18nClient />
           <Header />
           {children}
           <Navigation />

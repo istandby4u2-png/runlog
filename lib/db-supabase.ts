@@ -554,6 +554,49 @@ export const runningRecords = {
     return data;
   },
 
+  /** 같은 사용자·같은 record_date 기록이 이미 있는지 (배치 동기화 건너뛰기용) */
+  async findIdByUserAndRecordDate(userId: number, recordDate: string): Promise<number | null> {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { data, error } = await supabaseAdmin
+      .from('running_records')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('record_date', recordDate)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('RunningRecord findIdByUserAndRecordDate error:', error);
+      return null;
+    }
+    return data?.id ?? null;
+  },
+
+  async listRecordDatesInRange(userId: number, from: string, to: string): Promise<string[]> {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { data, error } = await supabaseAdmin
+      .from('running_records')
+      .select('record_date')
+      .eq('user_id', userId)
+      .gte('record_date', from)
+      .lte('record_date', to);
+
+    if (error) {
+      console.error('RunningRecords listRecordDatesInRange error:', error);
+      return [];
+    }
+    const set = new Set<string>();
+    for (const row of data || []) {
+      const d = (row as { record_date?: string }).record_date;
+      if (d) set.add(d);
+    }
+    return [...set].sort();
+  },
+
   async update(id: number, record: {
     title?: string;
     content?: string | null;
@@ -793,6 +836,26 @@ export const pickedPhotos = {
       return null;
     }
     return data;
+  },
+
+  /** 범위 안에서 사진을 선택해 둔 날짜만 오름차순 (YYYY-MM-DD) */
+  async findPhotoDatesInRange(userId: number, from: string, to: string): Promise<string[]> {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { data, error } = await supabaseAdmin
+      .from('picked_photos')
+      .select('photo_date')
+      .eq('user_id', userId)
+      .gte('photo_date', from)
+      .lte('photo_date', to)
+      .order('photo_date', { ascending: true });
+
+    if (error) {
+      console.error('PickedPhotos findPhotoDatesInRange error:', error);
+      return [];
+    }
+    return (data || []).map((r) => String((r as { photo_date: string }).photo_date));
   },
 
   async upsert(userId: number, photoDate: string, blobUrl: string) {

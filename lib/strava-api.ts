@@ -263,3 +263,116 @@ export async function getValidAccessToken(
     expires_at: refreshed.expires_at,
   };
 }
+
+// ---------------------------------------------------------------------------
+// RunLog / Instagram copy (multi-activity same KST day)
+// ---------------------------------------------------------------------------
+
+export function sumActivitiesMetrics(activities: StravaActivitySummary[]) {
+  const totalDistanceKm = activities.reduce((s, a) => s + (a.distanceKm || 0), 0);
+  const totalDurationMinutes = activities.reduce((s, a) => s + (a.durationMinutes || 0), 0);
+  const totalCalories = activities.reduce((s, a) => s + (a.calories || 0), 0);
+  return {
+    totalDistanceKm: Math.round(totalDistanceKm * 100) / 100,
+    totalDurationMinutes,
+    totalCalories,
+  };
+}
+
+function formatDurationKorean(durationMinutes: number): string {
+  const h = Math.floor(durationMinutes / 60);
+  const m = durationMinutes % 60;
+  return `${h > 0 ? `${h}시간 ` : ''}${m}분`;
+}
+
+function singleActivityRecordLines(a: StravaActivitySummary): string[] {
+  const parts: string[] = [];
+  if (a.distanceKm > 0) parts.push(`거리: ${a.distanceKm}km`);
+  if (a.durationMinutes > 0) parts.push(`시간: ${formatDurationKorean(a.durationMinutes)}`);
+  if (a.averagePaceMinPerKm) {
+    const mins = Math.floor(a.averagePaceMinPerKm);
+    const secs = Math.round((a.averagePaceMinPerKm - mins) * 60);
+    parts.push(`평균 페이스: ${mins}'${secs.toString().padStart(2, '0')}"/km`);
+  }
+  if (a.calories > 0) parts.push(`소모 칼로리: ${a.calories}kcal`);
+  if (a.averageHR > 0) parts.push(`평균 심박: ${a.averageHR}bpm`);
+  if (a.elevationGain > 0) parts.push(`고도 상승: ${a.elevationGain}m`);
+  return parts;
+}
+
+/** RunLog 본문: 같은 날 여러 활동이면 건별 블록 + 합계. */
+export function buildStravaRecordContent(activities: StravaActivitySummary[]): string {
+  if (activities.length === 0) return '(Strava 자동 동기화)';
+  const blocks: string[] = [];
+  activities.forEach((a, i) => {
+    if (activities.length > 1) {
+      blocks.push(`── ${i + 1}. ${a.activityName} ──`);
+    }
+    blocks.push(...singleActivityRecordLines(a));
+    if (i < activities.length - 1) blocks.push('');
+  });
+  if (activities.length > 1) {
+    const sum = sumActivitiesMetrics(activities);
+    blocks.push('— 합계 —');
+    if (sum.totalDistanceKm > 0) blocks.push(`거리: ${sum.totalDistanceKm}km`);
+    if (sum.totalDurationMinutes > 0) {
+      blocks.push(`시간: ${formatDurationKorean(sum.totalDurationMinutes)}`);
+    }
+    if (sum.totalCalories > 0) blocks.push(`소모 칼로리: ${sum.totalCalories}kcal`);
+  }
+  blocks.push('(Strava 자동 동기화)');
+  return blocks.join('\n');
+}
+
+function formatDurationCaption(durationMinutes: number): string {
+  const h = Math.floor(durationMinutes / 60);
+  const m = durationMinutes % 60;
+  return `${h > 0 ? `${h}h ` : ''}${m}m`;
+}
+
+/** Instagram 캡션: 같은 날 여러 활동이면 건별 줄 + 합계. */
+export function buildStravaInstagramCaption(
+  activities: StravaActivitySummary[],
+  dateStr: string
+): string {
+  const parts: string[] = [];
+  if (activities.length === 1) {
+    parts.push(`🏃 ${activities[0].activityName}`);
+  } else {
+    parts.push(`🏃 활동 ${activities.length}건`);
+  }
+  parts.push(`📅 ${dateStr}`);
+  activities.forEach((a, i) => {
+    parts.push('');
+    parts.push(`${i + 1}. ${a.activityName}`);
+    if (a.distanceKm > 0) parts.push(`   📏 ${a.distanceKm}km`);
+    if (a.durationMinutes > 0) parts.push(`   ⏱ ${formatDurationCaption(a.durationMinutes)}`);
+    if (a.calories > 0) parts.push(`   🔥 ${a.calories}kcal`);
+  });
+  if (activities.length > 1) {
+    const sum = sumActivitiesMetrics(activities);
+    parts.push('');
+    const bits: string[] = [];
+    if (sum.totalDistanceKm > 0) bits.push(`${sum.totalDistanceKm}km`);
+    if (sum.totalDurationMinutes > 0) {
+      bits.push(formatDurationCaption(sum.totalDurationMinutes));
+    }
+    if (sum.totalCalories > 0) bits.push(`${sum.totalCalories}kcal`);
+    if (bits.length > 0) parts.push(`합계: ${bits.join(' · ')}`);
+  }
+  parts.push('');
+  parts.push('#RunLog #running #러닝 #달리기 #strava');
+  return parts.join('\n');
+}
+
+/** DB title: 단일은 활동명, 복수는 날짜·건수. */
+export function stravaSyncRecordTitle(
+  activities: StravaActivitySummary[],
+  dateStr: string
+): string {
+  if (activities.length === 0) return `Running ${dateStr}`;
+  if (activities.length === 1) {
+    return activities[0].activityName || `Running ${dateStr}`;
+  }
+  return `${dateStr} · 활동 ${activities.length}건`;
+}

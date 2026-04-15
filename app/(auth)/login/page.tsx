@@ -45,12 +45,17 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-black mb-2">RunLog</h1>
-          <p className="text-gray-600">러닝코스 서비스</p>
+          <p
+            className="text-gray-600"
+            data-i18n="login.tagline"
+          >
+            러닝코스 서비스
+          </p>
         </div>
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-md">
           <div className="mb-4">
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-              이메일
+              <span data-i18n="login.emailLabel">이메일</span>
             </label>
             <input
               type="email"
@@ -63,7 +68,7 @@ export default function LoginPage() {
           </div>
           <div className="mb-6">
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-              비밀번호
+              <span data-i18n="login.passwordLabel">비밀번호</span>
             </label>
             <input
               type="password"
@@ -87,8 +92,12 @@ export default function LoginPage() {
             {loading ? '로그인 중...' : '로그인'}
           </button>
           <p className="mt-4 text-center text-sm text-gray-600">
-            계정이 없으신가요?{' '}
-            <Link href="/register" className="text-black hover:underline">
+            <span data-i18n="login.noAccount">계정이 없으신가요?</span>{' '}
+            <Link
+              href="/register"
+              className="text-black hover:underline"
+              data-i18n="login.signupLink"
+            >
               회원가입
             </Link>
           </p>

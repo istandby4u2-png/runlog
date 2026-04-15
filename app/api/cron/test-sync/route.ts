@@ -4,6 +4,10 @@ import type { StravaActivitySummary } from '@/lib/strava-api';
 import {
   getValidAccessToken,
   fetchActivitiesByDate as fetchStravaByDate,
+  sumActivitiesMetrics,
+  buildStravaRecordContent,
+  buildStravaInstagramCaption,
+  stravaSyncRecordTitle,
 } from '@/lib/strava-api';
 import {
   publishImagePost,
@@ -46,7 +50,7 @@ export async function GET(request: NextRequest) {
   // ------------------------------------------------------------------
   // 1. Activity data: try Strava first, fall back to query params
   // ------------------------------------------------------------------
-  let activity: StravaActivitySummary | null = null;
+  let activities: StravaActivitySummary[] = [];
 
   try {
     const stravaToken = await userTokens.findByProvider(userId, 'strava');
@@ -68,15 +72,15 @@ export async function GET(request: NextRequest) {
         log.push('Strava: token refreshed');
       }
 
-      const activities = await fetchStravaByDate(valid.access_token, dateStr, {
+      const fetched = await fetchStravaByDate(valid.access_token, dateStr, {
         debugLog: log,
       });
-      if (activities.length > 0) {
-        activity = activities[0];
-        log.push(
-          `Strava: found ${activities.length} activity(ies) — ` +
-          `${activity.activityName} ${activity.distanceKm}km`
-        );
+      if (fetched.length > 0) {
+        activities = fetched;
+        const detail = activities
+          .map((a) => `${a.activityName} ${a.distanceKm}km`)
+          .join(' · ');
+        log.push(`Strava: found ${activities.length} activity(ies) — ${detail}`);
       } else {
         log.push(`Strava: 해당 날짜 활동 없음 (${dateStr})`);
       }
@@ -88,7 +92,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Fall back to query params
-  if (!activity) {
+  if (activities.length === 0) {
     const dist = parseFloat(sp.get('dist') || '');
     const dur = parseInt(sp.get('dur') || '', 10);
 
@@ -101,20 +105,23 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    activity = {
-      activityId: 0,
-      activityName: sp.get('title') || `Running ${dateStr}`,
-      startTimeLocal: `${dateStr}T07:00:00`,
-      distanceKm: Math.round(dist * 100) / 100,
-      durationMinutes: dur,
-      calories: parseInt(sp.get('cal') || '', 10) || 0,
-      averageHR: 0,
-      maxHR: 0,
-      elevationGain: 0,
-      averagePaceMinPerKm: parseFloat(sp.get('pace') || '') || null,
-      locationName: '',
-    };
-    log.push(`Manual data: ${activity.activityName} ${dist}km ${dur}min`);
+    activities = [
+      {
+        activityId: 0,
+        activityName: sp.get('title') || `Running ${dateStr}`,
+        startTimeLocal: `${dateStr}T07:00:00`,
+        distanceKm: Math.round(dist * 100) / 100,
+        durationMinutes: dur,
+        calories: parseInt(sp.get('cal') || '', 10) || 0,
+        averageHR: 0,
+        maxHR: 0,
+        elevationGain: 0,
+        averagePaceMinPerKm: parseFloat(sp.get('pace') || '') || null,
+        locationName: '',
+      },
+    ];
+    const one = activities[0];
+    log.push(`Manual data: ${one.activityName} ${dist}km ${dur}min`);
   }
 
   // ------------------------------------------------------------------
@@ -145,15 +152,16 @@ export async function GET(request: NextRequest) {
   // ------------------------------------------------------------------
   let recordId: number | null = null;
   try {
+    const sums = sumActivitiesMetrics(activities);
     const record = await runningRecords.create({
       user_id: userId,
-      title: activity.activityName || `Running ${dateStr}`,
-      content: buildRecordContent(activity),
+      title: stravaSyncRecordTitle(activities, dateStr),
+      content: buildStravaRecordContent(activities),
       image_url: photoUrl,
-      distance: activity.distanceKm || null,
-      duration: activity.durationMinutes || null,
+      distance: sums.totalDistanceKm > 0 ? sums.totalDistanceKm : null,
+      duration: sums.totalDurationMinutes > 0 ? sums.totalDurationMinutes : null,
       record_date: dateStr,
-      burned_calories: activity.calories || null,
+      burned_calories: sums.totalCalories > 0 ? sums.totalCalories : null,
       sleep_hours: null,
       visibility: 'public',
     });
@@ -212,11 +220,11 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        const cardBuffer = await generateInstagramCard(activity, photoBuffer);
+        const cardBuffer = await generateInstagramCard(activities, photoBuffer);
         const cardUrl = await uploadImage(cardBuffer, 'records');
 
         if (cardUrl) {
-          const caption = buildInstagramCaption(activity, dateStr);
+          const caption = buildStravaInstagramCaption(activities, dateStr);
           igMediaId = await publishImagePost(igUserId, accessToken, cardUrl, caption);
           log.push(`Instagram: published media ${igMediaId}`);
         } else {
@@ -238,40 +246,4 @@ export async function GET(request: NextRequest) {
     igMediaId,
     log,
   });
-}
-
-function buildRecordContent(a: StravaActivitySummary): string {
-  const parts: string[] = [];
-  if (a.distanceKm > 0) parts.push(`거리: ${a.distanceKm}km`);
-  if (a.durationMinutes > 0) {
-    const h = Math.floor(a.durationMinutes / 60);
-    const m = a.durationMinutes % 60;
-    parts.push(`시간: ${h > 0 ? `${h}시간 ` : ''}${m}분`);
-  }
-  if (a.averagePaceMinPerKm) {
-    const mins = Math.floor(a.averagePaceMinPerKm);
-    const secs = Math.round((a.averagePaceMinPerKm - mins) * 60);
-    parts.push(`평균 페이스: ${mins}'${secs.toString().padStart(2, '0')}"/km`);
-  }
-  if (a.calories > 0) parts.push(`소모 칼로리: ${a.calories}kcal`);
-  if (a.averageHR > 0) parts.push(`평균 심박: ${a.averageHR}bpm`);
-  if (a.elevationGain > 0) parts.push(`고도 상승: ${a.elevationGain}m`);
-  parts.push('(Strava 자동 동기화)');
-  return parts.join('\n');
-}
-
-function buildInstagramCaption(a: StravaActivitySummary, dateStr: string): string {
-  const parts: string[] = [];
-  parts.push(`🏃 ${a.activityName}`);
-  parts.push(`📅 ${dateStr}`);
-  if (a.distanceKm > 0) parts.push(`📏 ${a.distanceKm}km`);
-  if (a.durationMinutes > 0) {
-    const h = Math.floor(a.durationMinutes / 60);
-    const m = a.durationMinutes % 60;
-    parts.push(`⏱ ${h > 0 ? `${h}h ` : ''}${m}m`);
-  }
-  if (a.calories > 0) parts.push(`🔥 ${a.calories}kcal`);
-  parts.push('');
-  parts.push('#RunLog #running #러닝 #달리기 #strava');
-  return parts.join('\n');
 }

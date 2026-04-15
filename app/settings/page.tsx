@@ -16,6 +16,7 @@ import {
   Camera,
   ExternalLink,
   Loader2,
+  CalendarDays,
 } from 'lucide-react';
 
 interface ConnectionStatus {
@@ -210,7 +211,202 @@ function SettingsContent() {
           </p>
         )}
       </div>
+
+      {connections?.google_photos?.connected && connections?.strava?.connected && (
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <h2 className="text-lg font-bold text-black mb-2 flex items-center gap-2">
+            <CalendarDays className="w-5 h-5" />
+            기간 일괄 동기화 (피드 + Instagram)
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            날짜마다 «사진 선택»으로 배경을 지정한 뒤, 범위를 정해 한 번에 RunLog 글을 만들고 Instagram에 올릴 수 있습니다.
+            하루에 한 번씩 서버를 호출하므로(인스타 처리 시간 포함) 날짜가 많으면 몇 분 걸릴 수 있습니다.
+          </p>
+          <BatchBackfill />
+        </div>
+      )}
     </main>
+  );
+}
+
+type BatchPreview = {
+  ok: boolean;
+  pendingDates: string[];
+  counts: { withPhoto: number; alreadySynced: number; pending: number };
+  datesWithPhoto: string[];
+};
+
+function BatchBackfill() {
+  const [from, setFrom] = useState('2026-03-09');
+  const [to, setTo] = useState('2026-04-15');
+  const [preview, setPreview] = useState<BatchPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchLines, setBatchLines] = useState<string[]>([]);
+
+  async function loadPreview() {
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreview(null);
+    try {
+      const res = await fetch(
+        `/api/cron/batch-sync/preview?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setPreviewError(data.error || '미리보기 실패');
+        return;
+      }
+      setPreview({
+        ok: true,
+        pendingDates: data.pendingDates || [],
+        counts: data.counts,
+        datesWithPhoto: data.datesWithPhoto || [],
+      });
+    } catch (err: unknown) {
+      setPreviewError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function runBatch() {
+    if (!preview?.pendingDates?.length) {
+      window.alert('«미리보기»로 동기화 대기 날짜가 있는지 먼저 확인해 주세요.');
+      return;
+    }
+    const dates = preview.pendingDates;
+    if (
+      !confirm(
+        `${dates.length}일치를 순서대로 처리합니다. 브라우저 탭을 닫지 마세요. 계속할까요?`
+      )
+    ) {
+      return;
+    }
+    setBatchRunning(true);
+    setBatchLines([]);
+    try {
+      for (let i = 0; i < dates.length; i++) {
+        const date = dates[i];
+        setBatchLines((prev) => [...prev, `▶ ${date} (${i + 1}/${dates.length}) …`]);
+        try {
+          const res = await fetch(`/api/cron/batch-sync/day?date=${encodeURIComponent(date)}`);
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            setBatchLines((prev) => [
+              ...prev,
+              `  ✗ 실패: ${data.error || (Array.isArray(data.log) ? data.log.join(' ') : '') || 'unknown'}`,
+            ]);
+            continue;
+          }
+          if (data.skipped) {
+            setBatchLines((prev) => [
+              ...prev,
+              `  ⊘ 건너뜀 (${data.skipReason || 'reason'})`,
+              ...(Array.isArray(data.log) ? data.log.map((l: string) => `    ${l}`) : []),
+            ]);
+          } else {
+            setBatchLines((prev) => [
+              ...prev,
+              `  ✓ record #${data.recordId ?? '—'}${data.igMediaId ? `, IG ${data.igMediaId}` : ''}`,
+            ]);
+          }
+        } catch (err: unknown) {
+          setBatchLines((prev) => [
+            ...prev,
+            `  ✗ 네트워크: ${err instanceof Error ? err.message : String(err)}`,
+          ]);
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      setBatchLines((prev) => [...prev, '— 완료 —']);
+    } finally {
+      setBatchRunning(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="text-sm text-gray-700">
+          시작
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            className="ml-2 border border-gray-300 rounded px-2 py-1.5 text-sm"
+          />
+        </label>
+        <label className="text-sm text-gray-700">
+          종료
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            className="ml-2 border border-gray-300 rounded px-2 py-1.5 text-sm"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={loadPreview}
+          disabled={previewLoading || batchRunning}
+          className="px-4 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50 disabled:opacity-50"
+        >
+          {previewLoading ? (
+            <span className="inline-flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" /> 조회 중…
+            </span>
+          ) : (
+            '미리보기'
+          )}
+        </button>
+      </div>
+
+      {previewError && (
+        <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">{previewError}</p>
+      )}
+
+      {preview && (
+        <div className="text-sm space-y-1 text-gray-800 bg-gray-50 border border-gray-200 rounded p-3">
+          <p>
+            사진 선택됨: <strong>{preview.counts.withPhoto}</strong>일 · 이미 기록 있음:{' '}
+            <strong>{preview.counts.alreadySynced}</strong>일 ·{' '}
+            <strong className="text-black">동기화 대기: {preview.counts.pending}</strong>일
+          </p>
+          {preview.pendingDates.length > 0 && (
+            <p className="text-xs text-gray-600 break-all">
+              대기 날짜: {preview.pendingDates.join(', ')}
+            </p>
+          )}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={runBatch}
+        disabled={batchRunning || previewLoading || (preview?.pendingDates.length ?? 0) === 0}
+        className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded hover:bg-gray-800 disabled:opacity-50 text-sm"
+      >
+        {batchRunning ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            일괄 처리 중…
+          </>
+        ) : (
+          <>
+            <Instagram className="w-4 h-4" />
+            대기 목록 전부 생성 + Instagram 업로드
+          </>
+        )}
+      </button>
+
+      {batchLines.length > 0 && (
+        <pre className="text-xs bg-white border border-gray-200 rounded p-3 max-h-64 overflow-auto whitespace-pre-wrap text-gray-800">
+          {batchLines.join('\n')}
+        </pre>
+      )}
+    </div>
   );
 }
 

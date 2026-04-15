@@ -1,5 +1,54 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import satori from 'satori';
 import sharp from 'sharp';
+
+/** @fontsource/noto-sans-kr — latin(영문·숫자) + korean(한글) WOFF, weight별로 satori에 등록 */
+const NOTO_KR_FILES = path.join(
+  process.cwd(),
+  'node_modules',
+  '@fontsource',
+  'noto-sans-kr',
+  'files'
+);
+
+type SatoriFontConfig = {
+  name: string;
+  data: ArrayBuffer;
+  weight: 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
+  style: 'normal';
+};
+
+let cachedSatoriFonts: SatoriFontConfig[] | null = null;
+
+function readFontFile(filename: string): ArrayBuffer {
+  const fp = path.join(NOTO_KR_FILES, filename);
+  const buf = fs.readFileSync(fp);
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+}
+
+/** latin 먼저(ASCII), 이어서 korean — satori가 글자마다 적합한 서브셋을 고름 */
+function getNotoSansKRSatoriFonts(): SatoriFontConfig[] {
+  if (cachedSatoriFonts) return cachedSatoriFonts;
+  const weights = [400, 600, 700] as const;
+  const fonts: SatoriFontConfig[] = [];
+  for (const w of weights) {
+    fonts.push({
+      name: 'NotoSansKR',
+      data: readFontFile(`noto-sans-kr-latin-${w}-normal.woff`),
+      weight: w,
+      style: 'normal',
+    });
+    fonts.push({
+      name: 'NotoSansKR',
+      data: readFontFile(`noto-sans-kr-korean-${w}-normal.woff`),
+      weight: w,
+      style: 'normal',
+    });
+  }
+  cachedSatoriFonts = fonts;
+  return fonts;
+}
 
 interface ActivityData {
   activityName: string;
@@ -19,19 +68,6 @@ function truncateText(s: string, maxLen: number): string {
   return `${s.slice(0, Math.max(0, maxLen - 1))}…`;
 }
 
-const FONT_URL =
-  'https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.woff';
-
-let cachedFont: ArrayBuffer | null = null;
-
-async function loadFont(): Promise<ArrayBuffer> {
-  if (cachedFont) return cachedFont;
-  const res = await fetch(FONT_URL);
-  if (!res.ok) throw new Error(`Font fetch failed: ${res.status}`);
-  cachedFont = await res.arrayBuffer();
-  return cachedFont;
-}
-
 /**
  * Generate a 1080x1080 JPEG running summary card for Instagram.
  *
@@ -48,7 +84,7 @@ export async function generateInstagramCard(
     ? primary.startTimeLocal.slice(0, 10).replace(/-/g, '.')
     : new Date().toISOString().slice(0, 10).replace(/-/g, '.');
 
-  const fontData = await loadFont();
+  const fonts = getNotoSansKRSatoriFonts();
 
   const runlogFooter = {
     type: 'div',
@@ -59,7 +95,8 @@ export async function generateInstagramCard(
         fontSize: 38,
         fontWeight: 700,
         color: 'white',
-        fontStyle: 'italic',
+        fontFamily: 'NotoSansKR',
+        fontStyle: 'normal',
       },
       children: 'RunLog',
     },
@@ -76,6 +113,7 @@ export async function generateInstagramCard(
           style: {
             fontSize: 76,
             fontWeight: 700,
+            fontFamily: 'NotoSansKR',
             color: 'white',
             textAlign: 'center',
             maxWidth: '90%',
@@ -88,6 +126,8 @@ export async function generateInstagramCard(
         props: {
           style: {
             fontSize: 48,
+            fontFamily: 'NotoSansKR',
+            fontWeight: 400,
             color: '#e0e0e0',
             marginTop: 16,
           },
@@ -108,6 +148,7 @@ export async function generateInstagramCard(
           style: {
             fontSize: 56,
             fontWeight: 700,
+            fontFamily: 'NotoSansKR',
             color: 'white',
             textAlign: 'center',
             maxWidth: '92%',
@@ -121,6 +162,7 @@ export async function generateInstagramCard(
           style: {
             fontSize: 44,
             fontWeight: 600,
+            fontFamily: 'NotoSansKR',
             color: '#f5f5f5',
             marginTop: 12,
             textAlign: 'center',
@@ -133,6 +175,8 @@ export async function generateInstagramCard(
         props: {
           style: {
             fontSize: 42,
+            fontFamily: 'NotoSansKR',
+            fontWeight: 400,
             color: '#e0e0e0',
             marginTop: 10,
           },
@@ -144,6 +188,8 @@ export async function generateInstagramCard(
         props: {
           style: {
             fontSize: 26,
+            fontFamily: 'NotoSansKR',
+            fontWeight: 400,
             marginTop: i === 0 ? 20 : 8,
             color: 'white',
             textAlign: 'center',
@@ -160,6 +206,8 @@ export async function generateInstagramCard(
               props: {
                 style: {
                   fontSize: 28,
+                  fontFamily: 'NotoSansKR',
+                  fontWeight: 400,
                   marginTop: 10,
                   color: '#e8e8e8',
                   textAlign: 'center',
@@ -184,6 +232,7 @@ export async function generateInstagramCard(
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: 'rgba(0,0,0,0.35)',
+        fontFamily: 'NotoSansKR',
       },
       children,
     },
@@ -192,14 +241,7 @@ export async function generateInstagramCard(
   const overlaySvg = await satori(element, {
     width: W,
     height: H,
-    fonts: [
-      {
-        name: 'NotoSansJP',
-        data: fontData,
-        weight: 400,
-        style: 'normal' as const,
-      },
-    ],
+    fonts,
   });
 
   let base: sharp.Sharp;

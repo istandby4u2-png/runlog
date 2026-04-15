@@ -1,5 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // satori 카드용 WOFF — 서버리스 번들에 폰트 파일 포함 (런타임 fs.readFileSync)
+  experimental: {
+    outputFileTracingIncludes: {
+      '/api/**/*': ['./node_modules/@fontsource/noto-sans-kr/files/**/*.woff'],
+    },
+  },
   images: {
     domains: ['localhost'],
   },

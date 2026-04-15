@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import satori from 'satori';
 import sharp from 'sharp';
+import { stravaSportTypeEmoji } from '@/lib/strava-api';
 
 /** @fontsource/noto-sans-kr — latin(영문·숫자) + korean(한글) WOFF, weight별로 satori에 등록 */
 const NOTO_KR_FILES = path.join(
@@ -27,6 +28,33 @@ function readFontFile(filename: string): ArrayBuffer {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
 
+const NOTO_EMOJI_FILES = path.join(
+  process.cwd(),
+  'node_modules',
+  '@fontsource',
+  'noto-color-emoji',
+  'files'
+);
+
+function readEmojiFontFile(filename: string): ArrayBuffer {
+  const fp = path.join(NOTO_EMOJI_FILES, filename);
+  const buf = fs.readFileSync(fp);
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+}
+
+let cachedEmojiFont: SatoriFontConfig | null = null;
+
+function getNotoColorEmojiFont(): SatoriFontConfig {
+  if (cachedEmojiFont) return cachedEmojiFont;
+  cachedEmojiFont = {
+    name: 'NotoColorEmoji',
+    data: readEmojiFontFile('noto-color-emoji-emoji-400-normal.woff'),
+    weight: 400,
+    style: 'normal',
+  };
+  return cachedEmojiFont;
+}
+
 /** latin 먼저(ASCII), 이어서 korean — satori가 글자마다 적합한 서브셋을 고름 */
 function getNotoSansKRSatoriFonts(): SatoriFontConfig[] {
   if (cachedSatoriFonts) return cachedSatoriFonts;
@@ -50,14 +78,20 @@ function getNotoSansKRSatoriFonts(): SatoriFontConfig[] {
   return fonts;
 }
 
+/** Strava 요약과 동일 필드 (sportType 없으면 Run 취급) */
 interface ActivityData {
   activityName: string;
+  sportType?: string;
   startTimeLocal: string;
   distanceKm: number;
   durationMinutes: number;
   calories: number;
   averageHR: number;
   averagePaceMinPerKm: number | null;
+}
+
+function cardFonts(): SatoriFontConfig[] {
+  return [...getNotoSansKRSatoriFonts(), getNotoColorEmojiFont()];
 }
 
 const W = 1080;
@@ -84,7 +118,7 @@ export async function generateInstagramCard(
     ? primary.startTimeLocal.slice(0, 10).replace(/-/g, '.')
     : new Date().toISOString().slice(0, 10).replace(/-/g, '.');
 
-  const fonts = getNotoSansKRSatoriFonts();
+  const fonts = cardFonts();
 
   const runlogFooter = {
     type: 'div',
@@ -106,19 +140,48 @@ export async function generateInstagramCard(
   let children: any[];
   if (list.length === 1) {
     const a = list[0];
+    const emoji = stravaSportTypeEmoji(a.sportType || 'Run');
     children = [
       {
         type: 'div',
         props: {
           style: {
-            fontSize: 76,
-            fontWeight: 700,
-            fontFamily: 'NotoSansKR',
-            color: 'white',
-            textAlign: 'center',
-            maxWidth: '90%',
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            maxWidth: '94%',
+            gap: 14,
+            flexWrap: 'wrap',
           },
-          children: a.activityName,
+          children: [
+            {
+              type: 'div',
+              props: {
+                style: {
+                  fontSize: 68,
+                  fontFamily: 'NotoColorEmoji',
+                  fontWeight: 400,
+                  lineHeight: 1,
+                },
+                children: emoji,
+              },
+            },
+            {
+              type: 'div',
+              props: {
+                style: {
+                  fontSize: 76,
+                  fontWeight: 700,
+                  fontFamily: 'NotoSansKR',
+                  color: 'white',
+                  textAlign: 'center',
+                  maxWidth: '88%',
+                },
+                children: a.activityName,
+              },
+            },
+          ],
         },
       },
       {
@@ -183,22 +246,55 @@ export async function generateInstagramCard(
           children: dateStr,
         },
       },
-      ...rows.map((a, i) => ({
-        type: 'div',
-        props: {
-          style: {
-            fontSize: 26,
-            fontFamily: 'NotoSansKR',
-            fontWeight: 400,
-            marginTop: i === 0 ? 20 : 8,
-            color: 'white',
-            textAlign: 'center',
-            maxWidth: '92%',
-            lineHeight: 1.25,
+      ...rows.map((a, i) => {
+        const rowEmoji = stravaSportTypeEmoji(a.sportType || 'Run');
+        const text = `${i + 1}. ${truncateText(a.activityName, 30)} · ${a.distanceKm}km · ${a.durationMinutes}분`;
+        return {
+          type: 'div',
+          props: {
+            style: {
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginTop: i === 0 ? 20 : 8,
+              maxWidth: '94%',
+              gap: 8,
+              flexWrap: 'wrap',
+            },
+            children: [
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    fontSize: 28,
+                    fontFamily: 'NotoColorEmoji',
+                    fontWeight: 400,
+                    lineHeight: 1.1,
+                    flexShrink: 0,
+                  },
+                  children: rowEmoji,
+                },
+              },
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    fontSize: 26,
+                    fontFamily: 'NotoSansKR',
+                    fontWeight: 400,
+                    color: 'white',
+                    textAlign: 'center',
+                    lineHeight: 1.25,
+                    maxWidth: '88%',
+                  },
+                  children: text,
+                },
+              },
+            ],
           },
-          children: `${i + 1}. ${truncateText(a.activityName, 34)} · ${a.distanceKm}km · ${a.durationMinutes}분`,
-        },
-      })),
+        };
+      }),
       ...(more > 0
         ? [
             {

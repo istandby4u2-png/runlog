@@ -100,7 +100,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         ok: false,
         error: 'Strava에 활동 데이터가 없습니다. 수동 데이터를 쿼리 파라미터로 전달해주세요.',
-        usage: '/api/cron/test-sync?date=2026-03-09&dist=10.5&dur=55&pace=5.2&cal=520&title=Morning+Run',
+        usage:
+          '/api/cron/test-sync?date=2026-03-09&dist=10.5&dur=55&pace=5.2&cal=520&title=Morning+Run&sport=Run',
         log,
       });
     }
@@ -109,6 +110,7 @@ export async function GET(request: NextRequest) {
       {
         activityId: 0,
         activityName: sp.get('title') || `Running ${dateStr}`,
+        sportType: (sp.get('sport') || 'Run').trim(),
         startTimeLocal: `${dateStr}T07:00:00`,
         distanceKm: Math.round(dist * 100) / 100,
         durationMinutes: dur,

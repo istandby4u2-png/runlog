@@ -38,6 +38,8 @@ export interface StravaActivity {
 export interface StravaActivitySummary {
   activityId: number;
   activityName: string;
+  /** Strava `sport_type` (권장) 또는 `type` — Run, Walk, Ride, WeightTraining 등 */
+  sportType: string;
   startTimeLocal: string;
   distanceKm: number;
   durationMinutes: number;
@@ -62,6 +64,36 @@ export function activityKstCalendarDate(a: StravaActivity): string {
   return '';
 }
 
+/** Instagram 카드 등에 쓰는 Strava 종목 → 이모지 */
+export function stravaSportTypeEmoji(sportType: string): string {
+  const key = (sportType || 'Run').trim().replace(/\s+/g, '').toLowerCase();
+
+  const walk = new Set(['walk', 'hike']);
+  const run = new Set(['run', 'trailrun', 'virtualrun', 'track']);
+  const bike = new Set([
+    'ride',
+    'virtualride',
+    'ebikeride',
+    'emountainbikeride',
+    'mountainbikeride',
+    'gravelride',
+    'handcycle',
+    'velomobile',
+  ]);
+  const strength = new Set([
+    'weighttraining',
+    'crossfit',
+    'workout',
+    'highintensityintervaltraining',
+  ]);
+
+  if (walk.has(key)) return '🚶🏻‍♀️';
+  if (run.has(key)) return '🏃🏻‍♀️';
+  if (bike.has(key)) return '🚲';
+  if (strength.has(key)) return '💪';
+  return '🏃🏻‍♀️';
+}
+
 function toSummary(a: StravaActivity): StravaActivitySummary {
   const distM = a.distance ?? 0;
   const moveSec = a.moving_time ?? a.elapsed_time ?? 0;
@@ -72,6 +104,7 @@ function toSummary(a: StravaActivity): StravaActivitySummary {
   return {
     activityId: a.id,
     activityName: a.name || 'Activity',
+    sportType: (a.sport_type || a.type || 'Run').trim(),
     startTimeLocal: a.start_date_local,
     distanceKm: Math.round(distanceKm * 100) / 100,
     durationMinutes,

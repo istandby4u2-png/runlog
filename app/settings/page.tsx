@@ -79,7 +79,7 @@ function SettingsContent() {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await fetch('/api/cron/daily-sync');
+      const res = await fetch('/api/cron/daily-sync', { credentials: 'include' });
       const data = await res.json();
       if (data.ok) {
         setSyncResult(
@@ -195,7 +195,11 @@ function SettingsContent() {
       <div className="mt-8 pt-6 border-t border-gray-200">
         <h2 className="text-lg font-bold text-black mb-3">수동 동기화</h2>
         <p className="text-sm text-gray-600 mb-4">
-          지금 바로 동기화를 실행합니다. 21:00 자동 실행과 동일한 동작입니다.
+          지금 바로 동기화를 실행합니다. <strong>현재 로그인한 계정</strong>의 Strava·날짜별로 선택한 사진·Instagram이
+          적용됩니다. 매일 자동 실행(Cron)은 Vercel의{' '}
+          <code className="text-xs bg-gray-100 px-1 rounded">AUTO_SYNC_USER_ID</code>에 해당하는 계정을 쓰므로,
+          사진이 반영되지 않으면 그 값이 본인 <code className="text-xs bg-gray-100 px-1 rounded">users.id</code>
+          와 같은지 확인해 주세요.
         </p>
         <button
           onClick={triggerSync}

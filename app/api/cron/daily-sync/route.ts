@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getUserIdFromRequest } from '@/lib/auth';
 import type { StravaActivitySummary } from '@/lib/strava-api';
 import {
   getValidAccessToken,
@@ -22,14 +23,30 @@ const CRON_SECRET = process.env.CRON_SECRET;
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
-  if (CRON_SECRET) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${CRON_SECRET}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  const sessionUserId = getUserIdFromRequest();
+  const bearerOk =
+    !!CRON_SECRET &&
+    request.headers.get('authorization') === `Bearer ${CRON_SECRET}`;
+
+  /** Vercel Cron 등: Bearer + AUTO_SYNC_USER_ID. 설정 화면 «지금 동기화»: 로그인 세션 → 그 사용자의 Strava/사진/IG 사용 */
+  if (CRON_SECRET && !bearerOk && !sessionUserId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!AUTO_SYNC_USER_ID) {
+  let syncUserId: number;
+  if (bearerOk) {
+    if (!AUTO_SYNC_USER_ID) {
+      return NextResponse.json(
+        { error: 'AUTO_SYNC_USER_ID not configured (needed for cron)' },
+        { status: 500 }
+      );
+    }
+    syncUserId = AUTO_SYNC_USER_ID;
+  } else if (sessionUserId) {
+    syncUserId = sessionUserId;
+  } else if (AUTO_SYNC_USER_ID) {
+    syncUserId = AUTO_SYNC_USER_ID;
+  } else {
     return NextResponse.json(
       { error: 'AUTO_SYNC_USER_ID not configured' },
       { status: 500 }
@@ -44,6 +61,13 @@ export async function GET(request: NextRequest) {
     dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : kstToday;
 
   const log: string[] = [];
+  log.push(
+    bearerOk
+      ? `동기화 사용자: cron (AUTO_SYNC_USER_ID=${syncUserId})`
+      : sessionUserId
+        ? `동기화 사용자: 로그인 계정 (user_id=${syncUserId})`
+        : `동기화 사용자: 환경변수 기본 (AUTO_SYNC_USER_ID=${syncUserId})`
+  );
   if (dateParam && todayStr === dateParam) {
     log.push(`날짜 지정: ${todayStr} (KST 오늘: ${kstToday})`);
   }
@@ -53,7 +77,7 @@ export async function GET(request: NextRequest) {
   // ------------------------------------------------------------------
   let activities: StravaActivitySummary[] = [];
   try {
-    const stravaToken = await userTokens.findByProvider(AUTO_SYNC_USER_ID, 'strava');
+    const stravaToken = await userTokens.findByProvider(syncUserId, 'strava');
     if (!stravaToken?.refresh_token) {
       log.push('Strava: not connected');
       return NextResponse.json({ ok: true, log, synced: false });
@@ -68,7 +92,7 @@ export async function GET(request: NextRequest) {
     // Update stored tokens if refreshed
     if (valid.access_token !== stravaToken.access_token) {
       await userTokens.upsert({
-        user_id: AUTO_SYNC_USER_ID,
+        user_id: syncUserId,
         provider: 'strava',
         access_token: valid.access_token,
         refresh_token: valid.refresh_token,
@@ -100,7 +124,7 @@ export async function GET(request: NextRequest) {
   let photoUrl: string | null = null;
   let photoBuffer: Buffer | null = null;
   try {
-    const picked = await pickedPhotos.findByDate(AUTO_SYNC_USER_ID, todayStr);
+    const picked = await pickedPhotos.findByDate(syncUserId, todayStr);
     if (picked?.blob_url) {
       photoUrl = picked.blob_url;
       const res = await fetch(picked.blob_url);
@@ -124,7 +148,7 @@ export async function GET(request: NextRequest) {
   try {
     const sums = sumActivitiesMetrics(activities);
     const record = await runningRecords.create({
-      user_id: AUTO_SYNC_USER_ID,
+      user_id: syncUserId,
       title: stravaSyncRecordTitle(activities, todayStr),
       content: buildStravaRecordContent(activities),
       image_url: photoUrl,
@@ -146,7 +170,7 @@ export async function GET(request: NextRequest) {
   // ------------------------------------------------------------------
   let igMediaId: string | null = null;
   try {
-    const igToken = await userTokens.findByProvider(AUTO_SYNC_USER_ID, 'instagram');
+    const igToken = await userTokens.findByProvider(syncUserId, 'instagram');
     if (igToken?.access_token && igToken.extra_data) {
       let accessToken = igToken.access_token;
 
@@ -161,7 +185,7 @@ export async function GET(request: NextRequest) {
         const storedId = String((igToken.extra_data as { ig_user_id?: string | number }).ig_user_id || '');
         if (storedId !== igUserId) {
           await userTokens.upsert({
-            user_id: AUTO_SYNC_USER_ID,
+            user_id: syncUserId,
             provider: 'instagram',
             access_token: accessToken,
             token_expires_at: igToken.token_expires_at,
@@ -177,7 +201,7 @@ export async function GET(request: NextRequest) {
             const refreshed = await refreshLongLivedToken(accessToken);
             accessToken = refreshed.access_token;
             await userTokens.upsert({
-              user_id: AUTO_SYNC_USER_ID,
+              user_id: syncUserId,
               provider: 'instagram',
               access_token: accessToken,
               token_expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),

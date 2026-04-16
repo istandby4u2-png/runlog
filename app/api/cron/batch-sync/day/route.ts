@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { syncStravaDayForUser } from '@/lib/sync-strava-user-day';
 
-export const maxDuration = 60;
+/** Strava + RunLog + satori 카드 + Instagram(컨테이너 폴링 ~45s+) — 60초면 타임아웃으로 IG 미게시가 잦음 */
+export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 /**

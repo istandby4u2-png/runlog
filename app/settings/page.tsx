@@ -226,7 +226,7 @@ function SettingsContent() {
           </h2>
           <p className="text-sm text-gray-600 mb-4">
             날짜마다 «사진 선택»으로 배경을 지정한 뒤, 범위를 정해 한 번에 RunLog 글을 만들고 Instagram에 올릴 수 있습니다.
-            하루에 한 번씩 서버를 호출하므로(인스타 처리 시간 포함) 날짜가 많으면 몇 분 걸릴 수 있습니다.
+            하루에 한 번씩 서버를 호출하며, Instagram 게시만 해도 1분 안팎이 걸릴 수 있습니다. 업로드가 생략되면 Vercel 함수 시간 제한(플랜)을 확인하거나 날짜를 나눠 실행해 보세요.
           </p>
           <BatchBackfill />
         </div>
@@ -257,7 +257,8 @@ function BatchBackfill() {
     setPreview(null);
     try {
       const res = await fetch(
-        `/api/cron/batch-sync/preview?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+        `/api/cron/batch-sync/preview?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+        { credentials: 'include' }
       );
       const data = await res.json();
       if (!res.ok) {
@@ -297,7 +298,9 @@ function BatchBackfill() {
         const date = dates[i];
         setBatchLines((prev) => [...prev, `▶ ${date} (${i + 1}/${dates.length}) …`]);
         try {
-          const res = await fetch(`/api/cron/batch-sync/day?date=${encodeURIComponent(date)}`);
+          const res = await fetch(`/api/cron/batch-sync/day?date=${encodeURIComponent(date)}`, {
+            credentials: 'include',
+          });
           const data = await res.json();
           if (!res.ok || !data.ok) {
             setBatchLines((prev) => [
@@ -313,9 +316,20 @@ function BatchBackfill() {
               ...(Array.isArray(data.log) ? data.log.map((l: string) => `    ${l}`) : []),
             ]);
           } else {
+            const igOk = Boolean(data.igMediaId);
+            const igHint =
+              !igOk && Array.isArray(data.log)
+                ? data.log
+                    .filter(
+                      (l: string) =>
+                        /instagram|인스타/i.test(l) || /카드 업로드|게시|token/i.test(l)
+                    )
+                    .join(' · ')
+                : '';
             setBatchLines((prev) => [
               ...prev,
-              `  ✓ record #${data.recordId ?? '—'}${data.igMediaId ? `, IG ${data.igMediaId}` : ''}`,
+              `  ✓ record #${data.recordId ?? '—'}${igOk ? `, Instagram ${data.igMediaId}` : ' · Instagram 미게시'}`,
+              ...(igHint ? [`    → ${igHint}`] : []),
             ]);
           }
         } catch (err: unknown) {
@@ -324,7 +338,8 @@ function BatchBackfill() {
             `  ✗ 네트워크: ${err instanceof Error ? err.message : String(err)}`,
           ]);
         }
-        await new Promise((r) => setTimeout(r, 500));
+        /* Instagram 연속 게시·서버 처리 간격 (레이트리밋·부하 완화) */
+        await new Promise((r) => setTimeout(r, 3500));
       }
       setBatchLines((prev) => [...prev, '— 완료 —']);
     } finally {

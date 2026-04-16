@@ -4,12 +4,30 @@ import satori from 'satori';
 import sharp from 'sharp';
 import { stravaSportTypeEmoji } from '@/lib/strava-api';
 
-/** @fontsource/noto-sans-kr — latin(영문·숫자) + korean(한글) WOFF, weight별로 satori에 등록 */
+/**
+ * 배포(Vercel)에서도 한글·이모지 글리프가 빠지지 않도록 WOFF는 `public/fonts/instagram-card` 우선.
+ * (node_modules만 쓰면 output tracing 누락 시 □로 렌더링될 수 있음)
+ */
+const PUBLIC_CARD_FONTS = path.join(
+  process.cwd(),
+  'public',
+  'fonts',
+  'instagram-card'
+);
+
 const NOTO_KR_FILES = path.join(
   process.cwd(),
   'node_modules',
   '@fontsource',
   'noto-sans-kr',
+  'files'
+);
+
+const NOTO_EMOJI_FILES = path.join(
+  process.cwd(),
+  'node_modules',
+  '@fontsource',
+  'noto-color-emoji',
   'files'
 );
 
@@ -21,41 +39,29 @@ type SatoriFontConfig = {
 };
 
 let cachedSatoriFonts: SatoriFontConfig[] | null = null;
+let cachedEmojiFont: SatoriFontConfig | null = null;
 
 function readFontFile(filename: string): ArrayBuffer {
-  const fp = path.join(NOTO_KR_FILES, filename);
+  const pub = path.join(PUBLIC_CARD_FONTS, filename);
+  const fallback = filename.includes('emoji')
+    ? path.join(NOTO_EMOJI_FILES, filename)
+    : path.join(NOTO_KR_FILES, filename);
+  const fp = fs.existsSync(pub) ? pub : fallback;
   const buf = fs.readFileSync(fp);
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
-
-const NOTO_EMOJI_FILES = path.join(
-  process.cwd(),
-  'node_modules',
-  '@fontsource',
-  'noto-color-emoji',
-  'files'
-);
-
-function readEmojiFontFile(filename: string): ArrayBuffer {
-  const fp = path.join(NOTO_EMOJI_FILES, filename);
-  const buf = fs.readFileSync(fp);
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-}
-
-let cachedEmojiFont: SatoriFontConfig | null = null;
 
 function getNotoColorEmojiFont(): SatoriFontConfig {
   if (cachedEmojiFont) return cachedEmojiFont;
   cachedEmojiFont = {
     name: 'NotoColorEmoji',
-    data: readEmojiFontFile('noto-color-emoji-emoji-400-normal.woff'),
+    data: readFontFile('noto-color-emoji-emoji-400-normal.woff'),
     weight: 400,
     style: 'normal',
   };
   return cachedEmojiFont;
 }
 
-/** latin 먼저(ASCII), 이어서 korean — satori가 글자마다 적합한 서브셋을 고름 */
 function getNotoSansKRSatoriFonts(): SatoriFontConfig[] {
   if (cachedSatoriFonts) return cachedSatoriFonts;
   const weights = [400, 600, 700] as const;
@@ -97,6 +103,25 @@ function cardFonts(): SatoriFontConfig[] {
 const W = 1080;
 const H = 1080;
 
+/** 참고 UI: 2026.3.9 */
+function formatCardDateYMD(isoDate: string): string {
+  const d = isoDate.slice(0, 10);
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return d.replace(/-/g, '.');
+  const y = m[1];
+  const mo = Number(m[2]);
+  const day = Number(m[3]);
+  return `${y}.${mo}.${day}`;
+}
+
+function formatDurationLine(minutes: number): string {
+  if (minutes <= 0) return '';
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  if (h <= 0) return `${m}분`;
+  return `${h}시간 ${m}분`;
+}
+
 function truncateText(s: string, maxLen: number): string {
   if (s.length <= maxLen) return s;
   return `${s.slice(0, Math.max(0, maxLen - 1))}…`;
@@ -104,9 +129,7 @@ function truncateText(s: string, maxLen: number): string {
 
 /**
  * Generate a 1080x1080 JPEG running summary card for Instagram.
- *
- * Uses satori (text → SVG paths) + sharp (composite & JPEG encode).
- * This ensures CJK characters render correctly on any server.
+ * 사진 배경 + 어두운 오버레이 + 가운데 정렬 텍스트 (참고 스크린과 유사).
  */
 export async function generateInstagramCard(
   activity: ActivityData | ActivityData[],
@@ -114,23 +137,33 @@ export async function generateInstagramCard(
 ): Promise<Buffer> {
   const list = Array.isArray(activity) ? activity : [activity];
   const primary = list[0];
-  const dateStr = primary.startTimeLocal
-    ? primary.startTimeLocal.slice(0, 10).replace(/-/g, '.')
-    : new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+  const dateStr = formatCardDateYMD(
+    primary.startTimeLocal
+      ? primary.startTimeLocal.slice(0, 10)
+      : new Date().toISOString().slice(0, 10)
+  );
 
   const fonts = cardFonts();
+
+  const textBase = {
+    fontFamily: 'NotoSansKR',
+    fontStyle: 'normal' as const,
+    color: 'white',
+    textAlign: 'center' as const,
+  };
 
   const runlogFooter = {
     type: 'div',
     props: {
       style: {
         position: 'absolute',
-        bottom: 40,
-        fontSize: 38,
+        bottom: 48,
+        left: 0,
+        right: 0,
+        fontSize: 44,
         fontWeight: 700,
-        color: 'white',
-        fontFamily: 'NotoSansKR',
-        fontStyle: 'normal',
+        ...textBase,
+        letterSpacing: 2,
       },
       children: 'RunLog',
     },
@@ -138,83 +171,109 @@ export async function generateInstagramCard(
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   let children: any[];
+
   if (list.length === 1) {
     const a = list[0];
     const emoji = stravaSportTypeEmoji(a.sportType || 'Run');
+    const distLine =
+      a.distanceKm > 0 ? `${(Math.round(a.distanceKm * 100) / 100).toFixed(2)}km` : '';
+    const durLine = formatDurationLine(a.durationMinutes);
+
     children = [
       {
         type: 'div',
         props: {
           style: {
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            maxWidth: '94%',
-            gap: 14,
-            flexWrap: 'wrap',
+            fontSize: 88,
+            fontFamily: 'NotoColorEmoji',
+            fontWeight: 400,
+            lineHeight: 1,
+            textAlign: 'center',
           },
-          children: [
-            {
-              type: 'div',
-              props: {
-                style: {
-                  fontSize: 68,
-                  fontFamily: 'NotoColorEmoji',
-                  fontWeight: 400,
-                  lineHeight: 1,
-                },
-                children: emoji,
-              },
-            },
-            {
-              type: 'div',
-              props: {
-                style: {
-                  fontSize: 76,
-                  fontWeight: 700,
-                  fontFamily: 'NotoSansKR',
-                  color: 'white',
-                  textAlign: 'center',
-                  maxWidth: '88%',
-                },
-                children: a.activityName,
-              },
-            },
-          ],
+          children: emoji,
         },
       },
       {
         type: 'div',
         props: {
           style: {
-            fontSize: 48,
-            fontFamily: 'NotoSansKR',
-            fontWeight: 400,
-            color: '#e0e0e0',
-            marginTop: 16,
+            fontSize: 64,
+            fontWeight: 700,
+            marginTop: 28,
+            ...textBase,
+            textShadow: '0 2px 12px rgba(0,0,0,0.45)',
           },
           children: dateStr,
+        },
+      },
+      ...(distLine
+        ? [
+            {
+              type: 'div',
+              props: {
+                style: {
+                  fontSize: 46,
+                  fontWeight: 600,
+                  marginTop: 20,
+                  ...textBase,
+                  textShadow: '0 2px 10px rgba(0,0,0,0.4)',
+                },
+                children: distLine,
+              },
+            },
+          ]
+        : []),
+      ...(durLine
+        ? [
+            {
+              type: 'div',
+              props: {
+                style: {
+                  fontSize: 42,
+                  fontWeight: 400,
+                  marginTop: 12,
+                  ...textBase,
+                  color: '#f0f0f0',
+                  textShadow: '0 2px 10px rgba(0,0,0,0.4)',
+                },
+                children: durLine,
+              },
+            },
+          ]
+        : []),
+      {
+        type: 'div',
+        props: {
+          style: {
+            fontSize: 40,
+            fontWeight: 600,
+            marginTop: 28,
+            maxWidth: '90%',
+            lineHeight: 1.35,
+            ...textBase,
+            textShadow: '0 2px 10px rgba(0,0,0,0.45)',
+          },
+          children: truncateText(a.activityName || 'Activity', 80),
         },
       },
       runlogFooter,
     ];
   } else {
-    const totalKm = list.reduce((s, a) => s + (a.distanceKm || 0), 0);
-    const maxRows = 6;
+    const totalKm = list.reduce((s, x) => s + (x.distanceKm || 0), 0);
+    const maxRows = 5;
     const rows = list.slice(0, maxRows);
     const more = list.length > maxRows ? list.length - maxRows : 0;
+
     children = [
       {
         type: 'div',
         props: {
           style: {
-            fontSize: 56,
+            fontSize: 52,
             fontWeight: 700,
-            fontFamily: 'NotoSansKR',
-            color: 'white',
-            textAlign: 'center',
+            ...textBase,
             maxWidth: '92%',
+            textShadow: '0 2px 12px rgba(0,0,0,0.45)',
           },
           children: `활동 ${list.length}건`,
         },
@@ -223,12 +282,11 @@ export async function generateInstagramCard(
         type: 'div',
         props: {
           style: {
-            fontSize: 44,
+            fontSize: 40,
             fontWeight: 600,
-            fontFamily: 'NotoSansKR',
-            color: '#f5f5f5',
-            marginTop: 12,
-            textAlign: 'center',
+            marginTop: 14,
+            ...textBase,
+            textShadow: '0 2px 10px rgba(0,0,0,0.4)',
           },
           children: `총 ${totalKm.toFixed(1)}km`,
         },
@@ -237,18 +295,25 @@ export async function generateInstagramCard(
         type: 'div',
         props: {
           style: {
-            fontSize: 42,
-            fontFamily: 'NotoSansKR',
+            fontSize: 36,
             fontWeight: 400,
-            color: '#e0e0e0',
             marginTop: 10,
+            ...textBase,
+            color: '#eeeeee',
+            textShadow: '0 2px 8px rgba(0,0,0,0.35)',
           },
           children: dateStr,
         },
       },
-      ...rows.map((a, i) => {
-        const rowEmoji = stravaSportTypeEmoji(a.sportType || 'Run');
-        const text = `${i + 1}. ${truncateText(a.activityName, 30)} · ${a.distanceKm}km · ${a.durationMinutes}분`;
+      ...rows.map((act, i) => {
+        const rowEmoji = stravaSportTypeEmoji(act.sportType || 'Run');
+        const dur = formatDurationLine(act.durationMinutes);
+        const parts = [
+          `${i + 1}. ${truncateText(act.activityName, 22)}`,
+          act.distanceKm > 0 ? `${act.distanceKm}km` : '',
+          dur,
+        ].filter(Boolean);
+        const line = parts.join(' · ');
         return {
           type: 'div',
           props: {
@@ -257,17 +322,17 @@ export async function generateInstagramCard(
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
-              marginTop: i === 0 ? 20 : 8,
+              marginTop: i === 0 ? 22 : 10,
               maxWidth: '94%',
-              gap: 8,
-              flexWrap: 'wrap',
+              gap: 10,
+              flexWrap: 'wrap' as const,
             },
             children: [
               {
                 type: 'div',
                 props: {
                   style: {
-                    fontSize: 28,
+                    fontSize: 30,
                     fontFamily: 'NotoColorEmoji',
                     fontWeight: 400,
                     lineHeight: 1.1,
@@ -281,14 +346,15 @@ export async function generateInstagramCard(
                 props: {
                   style: {
                     fontSize: 26,
-                    fontFamily: 'NotoSansKR',
                     fontWeight: 400,
+                    fontFamily: 'NotoSansKR',
                     color: 'white',
                     textAlign: 'center',
-                    lineHeight: 1.25,
-                    maxWidth: '88%',
+                    lineHeight: 1.3,
+                    maxWidth: '86%',
+                    textShadow: '0 1px 8px rgba(0,0,0,0.4)',
                   },
-                  children: text,
+                  children: line,
                 },
               },
             ],
@@ -301,12 +367,13 @@ export async function generateInstagramCard(
               type: 'div',
               props: {
                 style: {
-                  fontSize: 28,
-                  fontFamily: 'NotoSansKR',
+                  fontSize: 26,
                   fontWeight: 400,
-                  marginTop: 10,
+                  fontFamily: 'NotoSansKR',
+                  marginTop: 12,
                   color: '#e8e8e8',
                   textAlign: 'center',
+                  textShadow: '0 1px 6px rgba(0,0,0,0.35)',
                 },
                 children: `외 ${more}건`,
               },
@@ -327,7 +394,11 @@ export async function generateInstagramCard(
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(0,0,0,0.35)',
+        paddingTop: 40,
+        paddingBottom: 120,
+        paddingLeft: 36,
+        paddingRight: 36,
+        backgroundColor: 'rgba(0,0,0,0.5)',
         fontFamily: 'NotoSansKR',
       },
       children,
@@ -349,10 +420,10 @@ export async function generateInstagramCard(
   } else {
     const gradientSvg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#1a1a1a"/>
-          <stop offset="100%" stop-color="#4a4a4a"/>
-        </linearGradient>
+        <radialGradient id="g" cx="50%" cy="45%" r="70%">
+          <stop offset="0%" stop-color="#2d2d2d"/>
+          <stop offset="100%" stop-color="#0a0a0a"/>
+        </radialGradient>
       </defs>
       <rect width="${W}" height="${H}" fill="url(#g)"/>
     </svg>`;
@@ -361,7 +432,7 @@ export async function generateInstagramCard(
 
   const result = await base
     .composite([{ input: Buffer.from(overlaySvg), top: 0, left: 0 }])
-    .jpeg({ quality: 90 })
+    .jpeg({ quality: 92 })
     .toBuffer();
 
   return result;

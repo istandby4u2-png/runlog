@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // satori 카드용 WOFF — 서버리스 번들에 폰트 파일 포함 (런타임 fs.readFileSync)
+  // satori 카드: 런타임은 public/fonts/instagram-card 우선 + 폰트 트레이싱 백업
   experimental: {
     outputFileTracingIncludes: {
       '/api/**/*': [

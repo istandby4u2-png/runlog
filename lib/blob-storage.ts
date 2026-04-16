@@ -10,27 +10,21 @@ function blobUploadErrorMessage(err: unknown): string {
   return String(err);
 }
 
-/**
- * Instagram 카드용 공개 URL 업로드 — Vercel Blob 실패 시 Supabase Storage(옵션)로 폴백.
- * Supabase: 대시보드에서 **공개 읽기** 버킷을 만들고 `SUPABASE_PUBLIC_CARD_BUCKET`에 버킷 이름 설정.
- */
-export async function uploadPublicJpegWithFallback(
-  buffer: Buffer,
-  folder: 'records' | 'courses' | 'profiles' = 'records'
-): Promise<UploadImageDetailedResult> {
-  const blob = await uploadImageDetailed(buffer, folder);
-  if (blob.ok) {
-    return { ok: true, url: blob.url, storage: 'vercel-blob' };
-  }
+function isSupabaseCardBucketConfigured(): boolean {
+  return Boolean(
+    process.env.SUPABASE_PUBLIC_CARD_BUCKET?.trim() && supabaseAdmin
+  );
+}
 
+/** Instagram 카드 JPEG → Supabase 공개 버킷 (Vercel Blob 할당량과 분리) */
+async function uploadInstagramCardToSupabase(
+  buffer: Buffer,
+  folder: 'records' | 'courses' | 'profiles'
+): Promise<UploadImageDetailedResult> {
   const bucket = process.env.SUPABASE_PUBLIC_CARD_BUCKET?.trim();
   if (!bucket || !supabaseAdmin) {
-    return {
-      ok: false,
-      error: blob.error,
-    };
+    return { ok: false, error: 'SUPABASE_PUBLIC_CARD_BUCKET 미설정' };
   }
-
   try {
     const ts = Date.now();
     const rand = Math.random().toString(36).substring(2, 8);
@@ -40,25 +34,64 @@ export async function uploadPublicJpegWithFallback(
       upsert: false,
     });
     if (error) {
-      return {
-        ok: false,
-        error: `${blob.error} | Supabase Storage: ${error.message}`,
-      };
+      return { ok: false, error: error.message };
     }
     const { data } = supabaseAdmin.storage.from(bucket).getPublicUrl(path);
     if (!data?.publicUrl) {
-      return {
-        ok: false,
-        error: `${blob.error} | Supabase: public URL 없음`,
-      };
+      return { ok: false, error: 'public URL 없음' };
     }
     return { ok: true, url: data.publicUrl, storage: 'supabase' };
   } catch (e: unknown) {
+    return { ok: false, error: blobUploadErrorMessage(e) };
+  }
+}
+
+/**
+ * Instagram 카드용 공개 URL 업로드.
+ * - `SUPABASE_PUBLIC_CARD_BUCKET` 이 있으면 **Supabase를 먼저** 시도 (Hobby Blob 1GB 한도 회피).
+ * - 없으면 Vercel Blob → 실패 시 Supabase 폴백.
+ */
+export async function uploadPublicJpegWithFallback(
+  buffer: Buffer,
+  folder: 'records' | 'courses' | 'profiles' = 'records'
+): Promise<UploadImageDetailedResult> {
+  if (isSupabaseCardBucketConfigured()) {
+    const sup = await uploadInstagramCardToSupabase(buffer, folder);
+    if (sup.ok) {
+      return sup;
+    }
+    const blob = await uploadImageDetailed(buffer, folder);
+    if (blob.ok) {
+      return { ok: true, url: blob.url, storage: 'vercel-blob' };
+    }
     return {
       ok: false,
-      error: `${blob.error} | Supabase: ${blobUploadErrorMessage(e)}`,
+      error: `Supabase: ${sup.error} | Vercel Blob: ${blob.error}`,
     };
   }
+
+  const blob = await uploadImageDetailed(buffer, folder);
+  if (blob.ok) {
+    return { ok: true, url: blob.url, storage: 'vercel-blob' };
+  }
+
+  const sup = await uploadInstagramCardToSupabase(buffer, folder);
+  if (sup.ok) {
+    return sup;
+  }
+
+  const quotaHint =
+    /quota|exceeded|maximum/i.test(blob.error) && sup.error === 'SUPABASE_PUBLIC_CARD_BUCKET 미설정'
+      ? ' Vercel Blob 용량 초과 시 Supabase에 공개 버킷을 만들고 SUPABASE_PUBLIC_CARD_BUCKET 환경 변수를 설정한 뒤 재배포하세요.'
+      : '';
+
+  return {
+    ok: false,
+    error:
+      sup.error === 'SUPABASE_PUBLIC_CARD_BUCKET 미설정'
+        ? `${blob.error}.${quotaHint}`
+        : `${blob.error} | Supabase: ${sup.error}`,
+  };
 }
 
 /**

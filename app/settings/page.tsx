@@ -313,12 +313,12 @@ function SettingsContent() {
             하루에 한 번씩 서버를 호출하며, Instagram 게시만 해도 1분 안팎이 걸릴 수 있습니다. 업로드가 생략되면 Vercel 함수 시간 제한(플랜)을 확인하거나 날짜를 나눠 실행해 보세요.
           </p>
           <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded p-3 mb-4">
-            Instagram 카드 이미지는 기본적으로 <strong>Vercel Blob</strong>(
-            <code className="text-xs bg-amber-100 px-1 rounded">BLOB_READ_WRITE_TOKEN</code>)에 올립니다.
-            Blob이 없으면 <strong>Supabase Storage</strong> 폴백을 쓸 수 있습니다. Supabase에서{' '}
-            <strong>공개 읽기</strong> 버킷을 만든 뒤 Vercel 환경 변수에{' '}
-            <code className="text-xs bg-amber-100 px-1 rounded">SUPABASE_PUBLIC_CARD_BUCKET</code>에 버킷 이름을
-            넣고 재배포하세요.
+            <code className="text-xs bg-amber-100 px-1 rounded">SUPABASE_PUBLIC_CARD_BUCKET</code>이 있으면{' '}
+            <strong>Instagram 카드 JPEG는 Supabase Storage에 먼저</strong> 올려 Vercel Blob Hobby 1GB 한도를
+            쓰지 않습니다. Supabase에서 <strong>공개 읽기</strong> 버킷을 만든 뒤 Vercel 환경 변수에 버킷 이름을
+            넣고 재배포하세요. 미설정 시에는 Blob(
+            <code className="text-xs bg-amber-100 px-1 rounded">BLOB_READ_WRITE_TOKEN</code>)을 쓰고, 실패 시에만
+            Supabase를 시도합니다.
           </p>
           <BatchBackfill />
         </div>

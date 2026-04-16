@@ -329,14 +329,21 @@ function SettingsContent() {
 
 type BatchPreview = {
   ok: boolean;
+  mode?: 'full_sync' | 'instagram_only';
   pendingDates: string[];
-  counts: { withPhoto: number; alreadySynced: number; pending: number };
-  datesWithPhoto: string[];
+  counts: {
+    pending: number;
+    withPhoto?: number;
+    alreadySynced?: number;
+    withImageRecord?: number;
+  };
+  datesWithPhoto?: string[];
 };
 
 function BatchBackfill() {
   const [from, setFrom] = useState('2026-03-09');
   const [to, setTo] = useState('2026-04-15');
+  const [instagramOnly, setInstagramOnly] = useState(false);
   const [preview, setPreview] = useState<BatchPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -348,8 +355,9 @@ function BatchBackfill() {
     setPreviewError(null);
     setPreview(null);
     try {
+      const ig = instagramOnly ? '&instagramOnly=1' : '';
       const res = await fetch(
-        `/api/cron/batch-sync/preview?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+        `/api/cron/batch-sync/preview?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${ig}`,
         { credentials: 'include' }
       );
       const data = await res.json();
@@ -359,6 +367,7 @@ function BatchBackfill() {
       }
       setPreview({
         ok: true,
+        mode: data.mode,
         pendingDates: data.pendingDates || [],
         counts: data.counts,
         datesWithPhoto: data.datesWithPhoto || [],
@@ -376,11 +385,10 @@ function BatchBackfill() {
       return;
     }
     const dates = preview.pendingDates;
-    if (
-      !confirm(
-        `${dates.length}일치를 순서대로 처리합니다. 브라우저 탭을 닫지 마세요. 계속할까요?`
-      )
-    ) {
+    const msg = instagramOnly
+      ? `${dates.length}일치에 대해 RunLog는 건드리지 않고 Instagram에만 게시합니다. 중복 게시에 유의하세요. 계속할까요?`
+      : `${dates.length}일치를 순서대로 처리합니다. 브라우저 탭을 닫지 마세요. 계속할까요?`;
+    if (!confirm(msg)) {
       return;
     }
     setBatchRunning(true);
@@ -390,7 +398,9 @@ function BatchBackfill() {
         const date = dates[i];
         setBatchLines((prev) => [...prev, `▶ ${date} (${i + 1}/${dates.length}) …`]);
         try {
-          const res = await fetch(`/api/cron/batch-sync/day?date=${encodeURIComponent(date)}`, {
+          const dayQs = new URLSearchParams({ date });
+          if (instagramOnly) dayQs.set('instagramOnly', '1');
+          const res = await fetch(`/api/cron/batch-sync/day?${dayQs.toString()}`, {
             credentials: 'include',
           });
           const data = await res.json();
@@ -472,17 +482,43 @@ function BatchBackfill() {
         </button>
       </div>
 
+      <label className="flex items-start gap-2 text-sm text-gray-800 cursor-pointer max-w-xl">
+        <input
+          type="checkbox"
+          className="mt-1 rounded border-gray-300"
+          checked={instagramOnly}
+          onChange={(e) => {
+            setInstagramOnly(e.target.checked);
+            setPreview(null);
+            setPreviewError(null);
+          }}
+        />
+        <span>
+          <strong>Instagram만</strong> 업로드 — 해당 기간에 이미 RunLog가 있고{' '}
+          <strong>배경 이미지(URL)</strong>가 있는 날짜만 대기 목록에 넣습니다. Strava 동기화·새 글 생성은 하지
+          않습니다.
+        </span>
+      </label>
+
       {previewError && (
         <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">{previewError}</p>
       )}
 
       {preview && (
         <div className="text-sm space-y-1 text-gray-800 bg-gray-50 border border-gray-200 rounded p-3">
-          <p>
-            사진 선택됨: <strong>{preview.counts.withPhoto}</strong>일 · 이미 기록 있음:{' '}
-            <strong>{preview.counts.alreadySynced}</strong>일 ·{' '}
-            <strong className="text-black">동기화 대기: {preview.counts.pending}</strong>일
-          </p>
+          {preview.mode === 'instagram_only' ? (
+            <p>
+              배경 이미지 있는 RunLog 날짜:{' '}
+              <strong>{preview.counts.withImageRecord ?? preview.counts.pending}</strong>일 ·{' '}
+              <strong className="text-black">Instagram 게시 대기: {preview.counts.pending}</strong>일
+            </p>
+          ) : (
+            <p>
+              사진 선택됨: <strong>{preview.counts.withPhoto ?? 0}</strong>일 · 이미 기록 있음:{' '}
+              <strong>{preview.counts.alreadySynced ?? 0}</strong>일 ·{' '}
+              <strong className="text-black">동기화 대기: {preview.counts.pending}</strong>일
+            </p>
+          )}
           {preview.pendingDates.length > 0 && (
             <p className="text-xs text-gray-600 break-all">
               대기 날짜: {preview.pendingDates.join(', ')}
@@ -501,6 +537,11 @@ function BatchBackfill() {
           <>
             <Loader2 className="w-4 h-4 animate-spin" />
             일괄 처리 중…
+          </>
+        ) : instagramOnly ? (
+          <>
+            <Instagram className="w-4 h-4" />
+            대기 목록 전부 Instagram만 게시
           </>
         ) : (
           <>

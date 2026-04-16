@@ -597,6 +597,37 @@ export const runningRecords = {
     return [...set].sort();
   },
 
+  /** 범위 안에서 배경 이미지(URL)가 있는 기록이 있는 날짜 — Instagram만 재게시 미리보기용 */
+  async listRecordDatesWithImageInRange(
+    userId: number,
+    from: string,
+    to: string
+  ): Promise<string[]> {
+    if (!supabaseAdmin) {
+      throw new Error('Supabase 관리자 클라이언트가 초기화되지 않았습니다.');
+    }
+    const { data, error } = await supabaseAdmin
+      .from('running_records')
+      .select('record_date, image_url')
+      .eq('user_id', userId)
+      .gte('record_date', from)
+      .lte('record_date', to);
+
+    if (error) {
+      console.error('RunningRecords listRecordDatesWithImageInRange error:', error);
+      return [];
+    }
+    const set = new Set<string>();
+    for (const row of data || []) {
+      const r = row as { record_date?: string; image_url?: string | null };
+      const url = r.image_url;
+      if (r.record_date && url && String(url).trim()) {
+        set.add(r.record_date);
+      }
+    }
+    return [...set].sort();
+  },
+
   async update(id: number, record: {
     title?: string;
     content?: string | null;

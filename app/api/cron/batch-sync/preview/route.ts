@@ -8,7 +8,8 @@ const MAX_RANGE_DAYS = 120;
 
 /**
  * GET /api/cron/batch-sync/preview?from=YYYY-MM-DD&to=YYYY-MM-DD
- * 사진이 선택된 날짜 중, 아직 RunLog 기록이 없는 날짜 목록 (일괄 동기화 대상).
+ * - 기본: 사진이 선택된 날짜 중 아직 RunLog가 없는 날짜 (일괄 동기화 대기).
+ * - instagramOnly=1: 기간 안에서 배경 이미지(URL)가 있는 RunLog 날짜 (Instagram만 게시 대기).
  */
 export async function GET(request: NextRequest) {
   const userId = getUserIdFromRequest();
@@ -39,7 +40,30 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const instagramOnly =
+    sp.get('instagramOnly') === '1' || sp.get('mode') === 'instagram_only';
+
   try {
+    if (instagramOnly) {
+      const withImage = await runningRecords.listRecordDatesWithImageInRange(
+        userId,
+        from,
+        to
+      );
+      return NextResponse.json({
+        ok: true,
+        mode: 'instagram_only',
+        from,
+        to,
+        pendingDates: withImage,
+        datesWithImageRecord: withImage,
+        counts: {
+          withImageRecord: withImage.length,
+          pending: withImage.length,
+        },
+      });
+    }
+
     const [withPhoto, existingRecordDates] = await Promise.all([
       pickedPhotos.findPhotoDatesInRange(userId, from, to),
       runningRecords.listRecordDatesInRange(userId, from, to),
@@ -48,6 +72,7 @@ export async function GET(request: NextRequest) {
     const pendingDates = withPhoto.filter((d) => !existing.has(d));
     return NextResponse.json({
       ok: true,
+      mode: 'full_sync',
       from,
       to,
       datesWithPhoto: withPhoto,

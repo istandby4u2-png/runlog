@@ -15,7 +15,7 @@ import {
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { publishPublicImageToInstagramForUser } from '@/lib/instagram-user-publish';
 import { runningRecords, userTokens, pickedPhotos } from '@/lib/db-supabase';
-import { uploadImage } from '@/lib/blob-storage';
+import { uploadImageDetailed } from '@/lib/blob-storage';
 
 export type SyncStravaDayResult = {
   ok: boolean;
@@ -198,19 +198,19 @@ export async function syncStravaDayForUser(
     const igToken = await userTokens.findByProvider(userId, 'instagram');
     if (igToken?.access_token && igToken.extra_data) {
       const cardBuffer = await generateInstagramCard(activities, photoBuffer);
-      const cardUrl = await uploadImage(cardBuffer, 'records');
+      const uploaded = await uploadImageDetailed(cardBuffer, 'records');
 
-      if (cardUrl) {
+      if (uploaded.ok) {
         const caption = buildStravaInstagramCaption(activities, dateStr);
         const pub = await publishPublicImageToInstagramForUser(
           userId,
-          cardUrl,
+          uploaded.url,
           caption
         );
         igMediaId = pub.igMediaId;
         log.push(...pub.log);
       } else {
-        log.push('Instagram: 카드 업로드 실패');
+        log.push(`Instagram: 카드 업로드 실패 — ${uploaded.error}`);
       }
     } else {
       log.push('Instagram: 미연결');

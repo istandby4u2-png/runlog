@@ -10,7 +10,7 @@ import {
 } from '@/lib/strava-api';
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { runningRecords, userTokens } from '@/lib/db-supabase';
-import { uploadImage } from '@/lib/blob-storage';
+import { uploadImageDetailed } from '@/lib/blob-storage';
 import { publishPublicImageToInstagramForUser } from '@/lib/instagram-user-publish';
 
 function syntheticActivitiesFromRecord(record: {
@@ -147,10 +147,14 @@ export async function publishExistingRecordToInstagram(
     };
   }
 
-  const cardUrl = await uploadImage(cardBuffer, 'records');
-  if (!cardUrl) {
-    return { ok: false, error: '카드 이미지 업로드에 실패했습니다.' };
+  const uploaded = await uploadImageDetailed(cardBuffer, 'records');
+  if (!uploaded.ok) {
+    return {
+      ok: false,
+      error: `카드 이미지 업로드 실패: ${uploaded.error}`,
+    };
   }
+  const cardUrl = uploaded.url;
 
   const caption = buildStravaInstagramCaption(activities, record.record_date);
   const { igMediaId, log: pubLog } = await publishPublicImageToInstagramForUser(

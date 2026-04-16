@@ -10,7 +10,7 @@ import {
 } from '@/lib/strava-api';
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { runningRecords, userTokens } from '@/lib/db-supabase';
-import { uploadImageDetailed } from '@/lib/blob-storage';
+import { uploadPublicJpegWithFallback } from '@/lib/blob-storage';
 import { publishPublicImageToInstagramForUser } from '@/lib/instagram-user-publish';
 
 function syntheticActivitiesFromRecord(record: {
@@ -147,12 +147,15 @@ export async function publishExistingRecordToInstagram(
     };
   }
 
-  const uploaded = await uploadImageDetailed(cardBuffer, 'records');
+  const uploaded = await uploadPublicJpegWithFallback(cardBuffer, 'records');
   if (!uploaded.ok) {
     return {
       ok: false,
       error: `카드 이미지 업로드 실패: ${uploaded.error}`,
     };
+  }
+  if (uploaded.storage === 'supabase') {
+    log.push('카드: Supabase Storage 업로드 (Blob 폴백)');
   }
   const cardUrl = uploaded.url;
 

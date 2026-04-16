@@ -312,6 +312,14 @@ function SettingsContent() {
             날짜마다 «사진 선택»으로 배경을 지정한 뒤, 범위를 정해 한 번에 RunLog 글을 만들고 Instagram에 올릴 수 있습니다.
             하루에 한 번씩 서버를 호출하며, Instagram 게시만 해도 1분 안팎이 걸릴 수 있습니다. 업로드가 생략되면 Vercel 함수 시간 제한(플랜)을 확인하거나 날짜를 나눠 실행해 보세요.
           </p>
+          <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded p-3 mb-4">
+            Instagram 카드 이미지는 기본적으로 <strong>Vercel Blob</strong>(
+            <code className="text-xs bg-amber-100 px-1 rounded">BLOB_READ_WRITE_TOKEN</code>)에 올립니다.
+            Blob이 없으면 <strong>Supabase Storage</strong> 폴백을 쓸 수 있습니다. Supabase에서{' '}
+            <strong>공개 읽기</strong> 버킷을 만든 뒤 Vercel 환경 변수에{' '}
+            <code className="text-xs bg-amber-100 px-1 rounded">SUPABASE_PUBLIC_CARD_BUCKET</code>에 버킷 이름을
+            넣고 재배포하세요.
+          </p>
           <BatchBackfill />
         </div>
       )}
@@ -401,20 +409,16 @@ function BatchBackfill() {
             ]);
           } else {
             const igOk = Boolean(data.igMediaId);
-            const igHint =
-              !igOk && Array.isArray(data.log)
-                ? data.log
-                    .filter(
-                      (l: string) =>
-                        /instagram|인스타/i.test(l) || /카드 업로드|게시|token/i.test(l)
-                    )
-                    .join(' · ')
-                : '';
-            setBatchLines((prev) => [
-              ...prev,
-              `  ✓ record #${data.recordId ?? '—'}${igOk ? `, Instagram ${data.igMediaId}` : ' · Instagram 미게시'}`,
-              ...(igHint ? [`    → ${igHint}`] : []),
-            ]);
+            setBatchLines((prev) => {
+              const head = [
+                `  ✓ record #${data.recordId ?? '—'}${igOk ? `, Instagram ${data.igMediaId}` : ' · Instagram 미게시'}`,
+              ];
+              if (igOk || !Array.isArray(data.log)) {
+                return [...prev, ...head];
+              }
+              const detail = data.log.map((l: string) => `    ${l}`);
+              return [...prev, ...head, ...detail];
+            });
           }
         } catch (err: unknown) {
           setBatchLines((prev) => [

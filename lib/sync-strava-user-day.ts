@@ -15,7 +15,7 @@ import {
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { publishPublicImageToInstagramForUser } from '@/lib/instagram-user-publish';
 import { runningRecords, userTokens, pickedPhotos } from '@/lib/db-supabase';
-import { uploadImageDetailed } from '@/lib/blob-storage';
+import { uploadPublicJpegWithFallback } from '@/lib/blob-storage';
 
 export type SyncStravaDayResult = {
   ok: boolean;
@@ -198,9 +198,12 @@ export async function syncStravaDayForUser(
     const igToken = await userTokens.findByProvider(userId, 'instagram');
     if (igToken?.access_token && igToken.extra_data) {
       const cardBuffer = await generateInstagramCard(activities, photoBuffer);
-      const uploaded = await uploadImageDetailed(cardBuffer, 'records');
+      const uploaded = await uploadPublicJpegWithFallback(cardBuffer, 'records');
 
       if (uploaded.ok) {
+        if (uploaded.storage === 'supabase') {
+          log.push('Instagram 카드: Supabase Storage에 업로드 (Blob 폴백)');
+        }
         const caption = buildStravaInstagramCaption(activities, dateStr);
         const pub = await publishPublicImageToInstagramForUser(
           userId,

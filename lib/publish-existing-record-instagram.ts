@@ -9,7 +9,7 @@ import {
   buildStravaInstagramCaption,
 } from '@/lib/strava-api';
 import { generateInstagramCard } from '@/lib/instagram-image';
-import { runningRecords, userTokens } from '@/lib/db-supabase';
+import { pickedPhotos, runningRecords, userTokens } from '@/lib/db-supabase';
 import { uploadPublicJpegWithFallback } from '@/lib/blob-storage';
 import { publishPublicImageToInstagramForUser } from '@/lib/instagram-user-publish';
 
@@ -86,6 +86,16 @@ async function loadActivitiesForRecord(
   };
 }
 
+async function fetchImageUrlToBuffer(url: string): Promise<Buffer | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return Buffer.from(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
 export type PublishExistingRecordResult = {
   ok: boolean;
   error?: string;
@@ -105,23 +115,33 @@ export async function publishExistingRecordToInstagram(
   if (record.user_id !== userId) {
     return { ok: false, error: '권한이 없습니다.' };
   }
-  if (!record.image_url) {
-    return {
-      ok: false,
-      error: '이미지(URL)가 없어 카드를 만들 수 없습니다.',
-    };
+
+  let photoBuffer: Buffer | null = null;
+  if (record.image_url?.trim()) {
+    photoBuffer = await fetchImageUrlToBuffer(record.image_url.trim());
+    if (photoBuffer?.length) {
+      log.push('배경: RunLog에 저장된 이미지 URL');
+    } else {
+      log.push(
+        '배경: 저장된 URL을 불러오지 못함(404·만료 등) — Picker 또는 기본 배경으로 대체'
+      );
+    }
   }
 
-  let photoBuffer: Buffer;
-  try {
-    const res = await fetch(record.image_url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    photoBuffer = Buffer.from(await res.arrayBuffer());
-  } catch (e) {
-    return {
-      ok: false,
-      error: `배경 이미지를 불러오지 못했습니다: ${e instanceof Error ? e.message : String(e)}`,
-    };
+  if (!photoBuffer?.length) {
+    const picked = await pickedPhotos.findByDate(userId, record.record_date);
+    if (picked?.blob_url?.trim()) {
+      photoBuffer = await fetchImageUrlToBuffer(picked.blob_url.trim());
+      if (photoBuffer?.length) {
+        log.push('배경: 해당 날짜 Google Photos Picker에 저장된 이미지');
+      } else {
+        log.push('배경: Picker URL도 불러오지 못함 — 기본 그라데이션 사용');
+      }
+    } else if (!record.image_url?.trim()) {
+      log.push('배경: 이미지 URL 없음 — 기본 그라데이션 사용');
+    } else {
+      log.push('배경: 대체 이미지 없음 — 기본 그라데이션 사용');
+    }
   }
 
   const { activities, source } = await loadActivitiesForRecord(userId, {
@@ -139,7 +159,7 @@ export async function publishExistingRecordToInstagram(
 
   let cardBuffer: Buffer;
   try {
-    cardBuffer = await generateInstagramCard(activities, photoBuffer);
+    cardBuffer = await generateInstagramCard(activities, photoBuffer ?? null);
   } catch (e) {
     return {
       ok: false,

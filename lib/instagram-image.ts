@@ -1,34 +1,26 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import satori from 'satori';
 import sharp from 'sharp';
-import { stravaSportTypeEmoji } from '@/lib/strava-api';
 
 /**
- * 배포(Vercel)에서도 한글·이모지 글리프가 빠지지 않도록 WOFF는 `public/fonts/instagram-card` 우선.
- * (node_modules만 쓰면 output tracing 누락 시 □로 렌더링될 수 있음)
+ * Vercel 등 서버리스에서 `process.cwd()/node_modules`가 비어 있을 수 있어
+ * 프로젝트 package.json 기준으로 @fontsource 패키지 실제 경로를 고정한다.
  */
+const projectRequire = createRequire(path.join(process.cwd(), 'package.json'));
+
+const NOTO_KR_FILES = path.join(
+  path.dirname(projectRequire.resolve('@fontsource/noto-sans-kr/package.json')),
+  'files'
+);
+
+/** 배포 시 fs 추적 보강용 — 있으면 우선 사용 */
 const PUBLIC_CARD_FONTS = path.join(
   process.cwd(),
   'public',
   'fonts',
   'instagram-card'
-);
-
-const NOTO_KR_FILES = path.join(
-  process.cwd(),
-  'node_modules',
-  '@fontsource',
-  'noto-sans-kr',
-  'files'
-);
-
-const NOTO_EMOJI_FILES = path.join(
-  process.cwd(),
-  'node_modules',
-  '@fontsource',
-  'noto-color-emoji',
-  'files'
 );
 
 type SatoriFontConfig = {
@@ -39,29 +31,24 @@ type SatoriFontConfig = {
 };
 
 let cachedSatoriFonts: SatoriFontConfig[] | null = null;
-let cachedEmojiFont: SatoriFontConfig | null = null;
 
 function readFontFile(filename: string): ArrayBuffer {
   const pub = path.join(PUBLIC_CARD_FONTS, filename);
-  const fallback = filename.includes('emoji')
-    ? path.join(NOTO_EMOJI_FILES, filename)
-    : path.join(NOTO_KR_FILES, filename);
-  const fp = fs.existsSync(pub) ? pub : fallback;
+  const nm = path.join(NOTO_KR_FILES, filename);
+  const fp = fs.existsSync(pub) ? pub : nm;
+  if (!fs.existsSync(fp)) {
+    throw new Error(
+      `Instagram 카드 폰트 없음: ${filename} (확인: ${pub} , ${nm})`
+    );
+  }
   const buf = fs.readFileSync(fp);
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
 
-function getNotoColorEmojiFont(): SatoriFontConfig {
-  if (cachedEmojiFont) return cachedEmojiFont;
-  cachedEmojiFont = {
-    name: 'NotoColorEmoji',
-    data: readFontFile('noto-color-emoji-emoji-400-normal.woff'),
-    weight: 400,
-    style: 'normal',
-  };
-  return cachedEmojiFont;
-}
-
+/**
+ * Satori는 글리프를 폰트 배열 순서대로 찾는다.
+ * 한글은 korean 서브셋을 latin보다 먼저 등록해야 □가 나오지 않는다.
+ */
 function getNotoSansKRSatoriFonts(): SatoriFontConfig[] {
   if (cachedSatoriFonts) return cachedSatoriFonts;
   const weights = [400, 600, 700] as const;
@@ -69,19 +56,51 @@ function getNotoSansKRSatoriFonts(): SatoriFontConfig[] {
   for (const w of weights) {
     fonts.push({
       name: 'NotoSansKR',
-      data: readFontFile(`noto-sans-kr-latin-${w}-normal.woff`),
+      data: readFontFile(`noto-sans-kr-korean-${w}-normal.woff`),
       weight: w,
       style: 'normal',
     });
     fonts.push({
       name: 'NotoSansKR',
-      data: readFontFile(`noto-sans-kr-korean-${w}-normal.woff`),
+      data: readFontFile(`noto-sans-kr-latin-${w}-normal.woff`),
       weight: w,
       style: 'normal',
     });
   }
   cachedSatoriFonts = fonts;
   return fonts;
+}
+
+/** Satori+NotoColorEmoji는 ZWJ·피부톤 이모지에서 □가 나오므로 카드에는 한글 라벨만 사용 */
+function sportLabelKo(sportType: string): string {
+  const key = (sportType || 'Run').trim().replace(/\s+/g, '').toLowerCase();
+  const walk = new Set(['walk', 'hike']);
+  const run = new Set(['run', 'trailrun', 'virtualrun', 'track']);
+  const bike = new Set([
+    'ride',
+    'virtualride',
+    'ebikeride',
+    'emountainbikeride',
+    'mountainbikeride',
+    'gravelride',
+    'handcycle',
+    'velomobile',
+  ]);
+  const strength = new Set([
+    'weighttraining',
+    'crossfit',
+    'workout',
+    'highintensityintervaltraining',
+  ]);
+  if (walk.has(key)) return '걷기';
+  if (bike.has(key)) return '라이딩';
+  if (strength.has(key)) return '근력';
+  if (run.has(key)) return '러닝';
+  return '러닝';
+}
+
+function cardFonts(): SatoriFontConfig[] {
+  return getNotoSansKRSatoriFonts();
 }
 
 /** Strava 요약과 동일 필드 (sportType 없으면 Run 취급) */
@@ -94,10 +113,6 @@ interface ActivityData {
   calories: number;
   averageHR: number;
   averagePaceMinPerKm: number | null;
-}
-
-function cardFonts(): SatoriFontConfig[] {
-  return [...getNotoSansKRSatoriFonts(), getNotoColorEmojiFont()];
 }
 
 const W = 1080;
@@ -129,7 +144,7 @@ function truncateText(s: string, maxLen: number): string {
 
 /**
  * Generate a 1080x1080 JPEG running summary card for Instagram.
- * 사진 배경 + 어두운 오버레이 + 가운데 정렬 텍스트 (참고 스크린과 유사).
+ * 이모지(NotoColorEmoji) 미사용 — 한글·라틴만 Noto Sans KR로 렌더링.
  */
 export async function generateInstagramCard(
   activity: ActivityData | ActivityData[],
@@ -174,7 +189,7 @@ export async function generateInstagramCard(
 
   if (list.length === 1) {
     const a = list[0];
-    const emoji = stravaSportTypeEmoji(a.sportType || 'Run');
+    const kind = sportLabelKo(a.sportType || 'Run');
     const distLine =
       a.distanceKm > 0 ? `${(Math.round(a.distanceKm * 100) / 100).toFixed(2)}km` : '';
     const durLine = formatDurationLine(a.durationMinutes);
@@ -184,13 +199,13 @@ export async function generateInstagramCard(
         type: 'div',
         props: {
           style: {
-            fontSize: 88,
-            fontFamily: 'NotoColorEmoji',
-            fontWeight: 400,
-            lineHeight: 1,
-            textAlign: 'center',
+            fontSize: 72,
+            fontWeight: 700,
+            ...textBase,
+            lineHeight: 1.1,
+            textShadow: '0 2px 14px rgba(0,0,0,0.5)',
           },
-          children: emoji,
+          children: kind,
         },
       },
       {
@@ -306,10 +321,11 @@ export async function generateInstagramCard(
         },
       },
       ...rows.map((act, i) => {
-        const rowEmoji = stravaSportTypeEmoji(act.sportType || 'Run');
         const dur = formatDurationLine(act.durationMinutes);
+        const kind = sportLabelKo(act.sportType || 'Run');
         const parts = [
-          `${i + 1}. ${truncateText(act.activityName, 22)}`,
+          `${i + 1}. ${kind}`,
+          truncateText(act.activityName, 24),
           act.distanceKm > 0 ? `${act.distanceKm}km` : '',
           dur,
         ].filter(Boolean);
@@ -318,46 +334,17 @@ export async function generateInstagramCard(
           type: 'div',
           props: {
             style: {
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
+              fontSize: 26,
+              fontWeight: 400,
+              fontFamily: 'NotoSansKR',
+              color: 'white',
+              textAlign: 'center',
+              lineHeight: 1.35,
               marginTop: i === 0 ? 22 : 10,
               maxWidth: '94%',
-              gap: 10,
-              flexWrap: 'wrap' as const,
+              textShadow: '0 1px 8px rgba(0,0,0,0.4)',
             },
-            children: [
-              {
-                type: 'div',
-                props: {
-                  style: {
-                    fontSize: 30,
-                    fontFamily: 'NotoColorEmoji',
-                    fontWeight: 400,
-                    lineHeight: 1.1,
-                    flexShrink: 0,
-                  },
-                  children: rowEmoji,
-                },
-              },
-              {
-                type: 'div',
-                props: {
-                  style: {
-                    fontSize: 26,
-                    fontWeight: 400,
-                    fontFamily: 'NotoSansKR',
-                    color: 'white',
-                    textAlign: 'center',
-                    lineHeight: 1.3,
-                    maxWidth: '86%',
-                    textShadow: '0 1px 8px rgba(0,0,0,0.4)',
-                  },
-                  children: line,
-                },
-              },
-            ],
+            children: line,
           },
         };
       }),

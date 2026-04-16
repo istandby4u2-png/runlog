@@ -5,7 +5,7 @@ const nextConfig = {
     outputFileTracingIncludes: {
       '/api/**/*': [
         './node_modules/@fontsource/noto-sans-kr/files/**/*.woff',
-        './node_modules/@fontsource/noto-color-emoji/files/**/*.woff',
+        './public/fonts/instagram-card/**/*.woff',
       ],
     },
   },

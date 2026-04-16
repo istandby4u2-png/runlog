@@ -41,6 +41,9 @@ function SettingsContent() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [publishRecordId, setPublishRecordId] = useState('');
+  const [publishIgLoading, setPublishIgLoading] = useState(false);
+  const [publishIgResult, setPublishIgResult] = useState<string | null>(null);
 
   const success = searchParams.get('success');
   const error = searchParams.get('error');
@@ -95,6 +98,44 @@ function SettingsContent() {
       setSyncResult(`네트워크 오류: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function publishRecordToInstagram() {
+    const id = parseInt(publishRecordId.trim(), 10);
+    if (!Number.isFinite(id) || id < 1) {
+      setPublishIgResult('기록 ID는 양의 정수로 입력해 주세요.');
+      return;
+    }
+    setPublishIgLoading(true);
+    setPublishIgResult(null);
+    try {
+      const res = await fetch(`/api/records/${id}/publish-instagram`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      let data: { ok?: boolean; error?: string; igMediaId?: string | null; log?: string[] } = {};
+      try {
+        data = await res.json();
+      } catch {
+        setPublishIgResult('응답을 해석할 수 없습니다. 잠시 후 다시 시도해 주세요.');
+        return;
+      }
+      if (!res.ok) {
+        setPublishIgResult(
+          data.error || `오류 (${res.status})${data.log?.length ? `\n${data.log.join('\n')}` : ''}`
+        );
+        return;
+      }
+      setPublishIgResult(
+        data.igMediaId
+          ? `게시 완료. Instagram 미디어 ID: ${data.igMediaId}`
+          : `처리됨 (Instagram 미게시 — 연결·로그 확인)\n${(data.log || []).join('\n')}`
+      );
+    } catch (err: unknown) {
+      setPublishIgResult(`네트워크 오류: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setPublishIgLoading(false);
     }
   }
 
@@ -217,6 +258,49 @@ function SettingsContent() {
           </p>
         )}
       </div>
+
+      {connections?.instagram?.connected && (
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <h2 className="text-lg font-bold text-black mb-2 flex items-center gap-2">
+            <Instagram className="w-5 h-5" />
+            이미 있는 피드 → Instagram
+          </h2>
+          <p className="text-sm text-gray-600 mb-3">
+            RunLog에 올라간 기록을 다시 카드로 만들어 Instagram에 게시합니다. 피드 글 상세·URL의 기록 번호(
+            <code className="text-xs bg-gray-100 px-1 rounded">records/…</code>)를 확인하세요. 같은 기록을
+            여러 번 실행하면 Instagram에 중복 게시될 수 있습니다.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              step={1}
+              placeholder="기록 ID"
+              value={publishRecordId}
+              onChange={(e) => setPublishRecordId(e.target.value)}
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-36"
+            />
+            <button
+              type="button"
+              onClick={publishRecordToInstagram}
+              disabled={publishIgLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded hover:bg-gray-800 disabled:opacity-50 text-sm"
+            >
+              {publishIgLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Instagram className="w-4 h-4" />
+              )}
+              {publishIgLoading ? '게시 중…' : 'Instagram에 게시'}
+            </button>
+          </div>
+          {publishIgResult && (
+            <pre className="mt-3 text-sm text-gray-700 bg-gray-50 p-3 rounded border border-gray-200 whitespace-pre-wrap">
+              {publishIgResult}
+            </pre>
+          )}
+        </div>
+      )}
 
       {connections?.google_photos?.connected && connections?.strava?.connected && (
         <div className="mt-8 pt-6 border-t border-gray-200">

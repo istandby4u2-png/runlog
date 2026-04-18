@@ -6,6 +6,7 @@ import {
   sportIconSvg,
   type SportKind,
 } from '@/lib/instagram-card-sport-icon';
+import { formatInstagramCalendarDate } from '@/lib/strava-api';
 // Apple SD Gothic Neo는 시스템 폰트이므로 별도 로드 불필요
 // Canvas에서 직접 사용 가능
 
@@ -35,6 +36,52 @@ async function drawSportIconCanvas(
     img.src = src;
   });
   ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size);
+}
+
+/** 서버 카드와 동일: Twemoji 📅 + 날짜 */
+async function drawCalendarRowCanvas(
+  ctx: CanvasRenderingContext2D,
+  calLabel: string,
+  centerX: number,
+  centerY: number
+): Promise<void> {
+  const iconSize = 52;
+  const gap = 14;
+  let icon: HTMLImageElement | null = null;
+  try {
+    const img = new Image();
+    img.decoding = 'async';
+    img.crossOrigin = 'anonymous';
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('calendar icon'));
+      img.src = '/twemoji/1f4c5.svg';
+    });
+    icon = img;
+  } catch {
+    icon = null;
+  }
+
+  ctx.save();
+  ctx.font =
+    'bold 44px "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic", sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+  ctx.shadowBlur = 12;
+  ctx.textBaseline = 'middle';
+  const tw = ctx.measureText(calLabel).width;
+  const iconW = icon ? iconSize + gap : 0;
+  const totalW = iconW + tw;
+  let x = centerX - totalW / 2;
+  if (icon) {
+    ctx.shadowBlur = 0;
+    ctx.drawImage(icon, x, centerY - iconSize / 2, iconSize, iconSize);
+    x += iconW;
+  }
+  ctx.textAlign = 'left';
+  ctx.shadowBlur = 12;
+  ctx.fillText(calLabel, x, centerY);
+  ctx.restore();
 }
 
 export function InstagramShare({ record }: InstagramShareProps) {
@@ -142,6 +189,14 @@ export function InstagramShare({ record }: InstagramShareProps) {
         ctx.fillStyle = '#ffffff';
         ctx.fillText(metrics, 540, 560);
       }
+
+      ctx.textAlign = 'center';
+      await drawCalendarRowCanvas(
+        ctx,
+        formatInstagramCalendarDate(record.record_date),
+        540,
+        628
+      );
 
       try {
         await document.fonts.load('400 58px "Dancing Script"');

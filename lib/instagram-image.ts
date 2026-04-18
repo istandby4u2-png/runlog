@@ -8,7 +8,13 @@ import {
   sportKindFromEmojiChar,
   type SportKind,
 } from '@/lib/instagram-card-sport-icon';
-import { formatDurationInstagramEn } from '@/lib/strava-api';
+import {
+  formatDurationInstagramEn,
+  formatInstagramCalendarDate,
+} from '@/lib/strava-api';
+
+/** Twemoji SVG(CC-BY 4.0): public/twemoji — Satori/Noto에 없는 이모지 대체 */
+const TWEMOJI_DIR = path.join(process.cwd(), 'public', 'twemoji');
 
 /** Next 번들은 최상단 createRequire를 깨뜨릴 수 있음 — cwd 기준 경로만 사용 */
 function notoKrFilesDir(): string {
@@ -139,17 +145,102 @@ const H = 1080;
 const SPORT_ICON_PX = 200;
 const SPORT_ICON_TOP = 300;
 
-async function compositeSportIcon(jpegBuffer: Buffer, kind: SportKind): Promise<Buffer> {
+function resolveCardCalendarLabel(
+  list: ActivityData[],
+  recordDate?: string | null
+): string {
+  const r = recordDate?.trim();
+  if (r) return formatInstagramCalendarDate(r);
+  const st = list[0]?.startTimeLocal?.trim();
+  if (st) return formatInstagramCalendarDate(st);
+  return formatInstagramCalendarDate(new Date().toISOString());
+}
+
+async function twemojiPngBuffer(hex: string, size: number): Promise<Buffer | null> {
+  const fp = path.join(TWEMOJI_DIR, `${hex}.svg`);
+  if (!fs.existsSync(fp)) return null;
+  return sharp(fs.readFileSync(fp)).resize(size, size).png().toBuffer();
+}
+
+/** 라이딩은 Twemoji 🚲(1f6b2) PNG 합성, 그 외 Lucide 실루엣 */
+async function rasterSportIconPng(kind: SportKind): Promise<Buffer> {
+  if (kind === 'ride') {
+    const bike = await twemojiPngBuffer('1f6b2', SPORT_ICON_PX);
+    if (bike) return bike;
+  }
   const svg = sportIconSvg(kind);
-  const iconPng = await sharp(Buffer.from(svg))
+  return sharp(Buffer.from(svg))
     .resize(SPORT_ICON_PX, SPORT_ICON_PX)
     .png()
     .toBuffer();
+}
+
+async function compositeSportIcon(jpegBuffer: Buffer, kind: SportKind): Promise<Buffer> {
+  const iconPng = await rasterSportIconPng(kind);
   const left = Math.round((W - SPORT_ICON_PX) / 2);
   return sharp(jpegBuffer)
     .composite([{ input: iconPng, left, top: SPORT_ICON_TOP }])
     .jpeg({ quality: 92 })
     .toBuffer();
+}
+
+/** Twemoji 📅 + YYYY-MM-DD (Satori img + Noto 텍스트) */
+async function buildSatoriDateRow(calLabel: string): Promise<Record<string, unknown>> {
+  const iconBuf = await twemojiPngBuffer('1f4c5', 52);
+  const textBlock = {
+    type: 'div',
+    props: {
+      style: {
+        fontSize: 44,
+        fontWeight: 700,
+        color: '#ffffff',
+        fontFamily: 'NotoSansKR',
+        fontStyle: 'normal',
+        textShadow: '0 2px 12px rgba(0,0,0,0.55)',
+      },
+      children: calLabel,
+    },
+  };
+  if (!iconBuf) {
+    return {
+      type: 'div',
+      props: {
+        style: {
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginTop: 18,
+        },
+        children: [textBlock],
+      },
+    };
+  }
+  const iconBytes = new Uint8Array(iconBuf);
+  return {
+    type: 'div',
+    props: {
+      style: {
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 14,
+        marginTop: 18,
+      },
+      children: [
+        {
+          type: 'img',
+          props: {
+            src: iconBytes,
+            width: 52,
+            height: 52,
+          },
+        },
+        textBlock,
+      ],
+    },
+  };
 }
 
 /** 상단 아이콘 자리(이모지 폰트 미사용 — SVG 합성용 빈 박스) */
@@ -167,15 +258,18 @@ function sportIconSpacer(): { type: string; props: Record<string, unknown> } {
 }
 
 /**
- * Instagram용 1080×1080 카드: 상단 종목은 SVG 아이콘 합성, 거리·시간, 하단 RunLog(스크립트).
- * 캡션은 buildStravaInstagramCaption(심플 블록).
+ * Instagram용 1080×1080 카드: 종목 아이콘 합성(라이딩은 Twemoji 🚲), 거리·시간·날짜, RunLog.
+ * @param recordDate 기록일 `YYYY-MM-DD` 등 — 캡션과 동일 규칙(formatInstagramCalendarDate)
  */
 export async function generateInstagramCard(
   activity: ActivityData | ActivityData[],
-  backgroundPhoto?: Buffer | null
+  backgroundPhoto?: Buffer | null,
+  recordDate?: string | null
 ): Promise<Buffer> {
   const list = Array.isArray(activity) ? activity : [activity];
   const fonts = cardFonts();
+  const calLabel = resolveCardCalendarLabel(list, recordDate);
+  const dateRowEl = await buildSatoriDateRow(calLabel);
 
   const textBase = {
     fontFamily: 'NotoSansKR',
@@ -254,6 +348,7 @@ export async function generateInstagramCard(
                 },
               ]
             : []),
+          dateRowEl,
         ],
       },
     };
@@ -298,6 +393,7 @@ export async function generateInstagramCard(
                 },
               ]
             : []),
+          dateRowEl,
           {
             type: 'div',
             props: {

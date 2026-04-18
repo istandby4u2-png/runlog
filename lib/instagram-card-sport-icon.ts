@@ -34,7 +34,7 @@ export function pickSportKindForList(
  * @see node_modules/lucide-react/dist/esm/icons/bike.js 등
  */
 export function sportIconSvg(kind: SportKind): string {
-  const stroke = '#000000';
+  const stroke = '#ffffff';
   const sw = 2;
   const a = `xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="512" height="512" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"`;
   switch (kind) {

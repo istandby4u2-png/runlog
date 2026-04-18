@@ -3,6 +3,7 @@
 import { RunningRecord } from '@/types';
 import { Instagram } from 'lucide-react';
 import { emojiToTwemojiSvgStem } from '@/lib/twemoji-stem';
+import { recolorTwemojiSvgString } from '@/lib/twemoji-recolor-for-card';
 import {
   formatInstagramCalendarDate,
   stravaSportTypeEmoji,
@@ -21,21 +22,22 @@ async function drawTwemojiSportCanvas(
   size: number
 ): Promise<void> {
   const stem = emojiToTwemojiSvgStem(stravaSportTypeEmoji(sportType));
+  const res = await fetch(`/twemoji/${stem}.svg`);
+  if (!res.ok) throw new Error('twemoji fetch');
+  const raw = await res.text();
+  const svg = recolorTwemojiSvgString(stem, raw);
   const img = new Image();
   img.decoding = 'async';
   img.crossOrigin = 'anonymous';
   await new Promise<void>((resolve, reject) => {
     img.onload = () => resolve();
     img.onerror = () => reject(new Error('twemoji sport'));
-    img.src = `/twemoji/${stem}.svg`;
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   });
   ctx.save();
   ctx.shadowBlur = 0;
   ctx.shadowOffsetY = 0;
-  // 서버와 동일하게 컬러 이모지 → 검정 실루엣
-  ctx.filter = 'brightness(0)';
   ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size);
-  ctx.filter = 'none';
   ctx.restore();
 }
 

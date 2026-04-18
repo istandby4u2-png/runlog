@@ -12,8 +12,22 @@ export function Header() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    const hasCookie = document.cookie.split(';').some(c => c.trim().startsWith('token='));
-    setIsLoggedIn(hasCookie);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/session', {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        const data = (await res.json()) as { authenticated?: boolean };
+        if (!cancelled) setIsLoggedIn(Boolean(data.authenticated));
+      } catch {
+        if (!cancelled) setIsLoggedIn(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [pathname]);
 
   const isAuthPage = pathname === '/login' || pathname === '/register';

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import satori from 'satori';
 import sharp from 'sharp';
+import { stravaSportTypeEmoji } from '@/lib/strava-api';
 
 /** Next 번들은 최상단 createRequire를 깨뜨릴 수 있음 — cwd 기준 경로만 사용 */
 function notoKrFilesDir(): string {
@@ -30,6 +31,7 @@ type SatoriFontConfig = {
 };
 
 let cachedSatoriFonts: SatoriFontConfig[] | null = null;
+let cachedEmojiFont: SatoriFontConfig | null = null;
 
 function readFontFile(filename: string): ArrayBuffer {
   const pub = path.join(PUBLIC_CARD_FONTS, filename);
@@ -70,36 +72,20 @@ function getNotoSansKRSatoriFonts(): SatoriFontConfig[] {
   return fonts;
 }
 
-/** Satori+NotoColorEmoji는 ZWJ·피부톤 이모지에서 □가 나오므로 카드에는 한글 라벨만 사용 */
-function sportLabelKo(sportType: string): string {
-  const key = (sportType || 'Run').trim().replace(/\s+/g, '').toLowerCase();
-  const walk = new Set(['walk', 'hike']);
-  const run = new Set(['run', 'trailrun', 'virtualrun', 'track']);
-  const bike = new Set([
-    'ride',
-    'virtualride',
-    'ebikeride',
-    'emountainbikeride',
-    'mountainbikeride',
-    'gravelride',
-    'handcycle',
-    'velomobile',
-  ]);
-  const strength = new Set([
-    'weighttraining',
-    'crossfit',
-    'workout',
-    'highintensityintervaltraining',
-  ]);
-  if (walk.has(key)) return '걷기';
-  if (bike.has(key)) return '라이딩';
-  if (strength.has(key)) return '근력';
-  if (run.has(key)) return '러닝';
-  return '러닝';
+/** 카드 상단 종목 이모지(ZWJ·피부톤) — Noto Color Emoji로 렌더 */
+function getNotoColorEmojiSatoriFont(): SatoriFontConfig {
+  if (cachedEmojiFont) return cachedEmojiFont;
+  cachedEmojiFont = {
+    name: 'NotoColorEmoji',
+    data: readFontFile('noto-color-emoji-emoji-400-normal.woff'),
+    weight: 400,
+    style: 'normal',
+  };
+  return cachedEmojiFont;
 }
 
 function cardFonts(): SatoriFontConfig[] {
-  return getNotoSansKRSatoriFonts();
+  return [...getNotoSansKRSatoriFonts(), getNotoColorEmojiSatoriFont()];
 }
 
 /** Strava 요약과 동일 필드 (sportType 없으면 Run 취급) */
@@ -117,46 +103,43 @@ interface ActivityData {
 const W = 1080;
 const H = 1080;
 
-/** 참고 UI: 2026.3.9 */
-function formatCardDateYMD(isoDate: string): string {
-  const d = isoDate.slice(0, 10);
-  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return d.replace(/-/g, '.');
-  const y = m[1];
-  const mo = Number(m[2]);
-  const day = Number(m[3]);
-  return `${y}.${mo}.${day}`;
-}
-
-function formatDurationLine(minutes: number): string {
+/** 카드용 시간 표기: `2h 43m` */
+function formatDurationCardEn(minutes: number): string {
   if (minutes <= 0) return '';
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
-  if (h <= 0) return `${m}분`;
-  return `${h}시간 ${m}분`;
+  const totalM = Math.max(0, Math.round(minutes));
+  const h = Math.floor(totalM / 60);
+  const m = totalM % 60;
+  if (h <= 0) return `${m}m`;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-function truncateText(s: string, maxLen: number): string {
-  if (s.length <= maxLen) return s;
-  return `${s.slice(0, Math.max(0, maxLen - 1))}…`;
+/** 여러 활동 시 카드 상단 이모지 — 자전거 등이 있으면 해당 이모지를 우선 */
+function pickCardEmojiForActivities(list: ActivityData[]): string {
+  const em = (t?: string) => stravaSportTypeEmoji(t || 'Run');
+  for (const a of list) {
+    if (em(a.sportType) === '🚲') return '🚲';
+  }
+  for (const a of list) {
+    if (em(a.sportType) === '🏃🏻‍♀️') return '🏃🏻‍♀️';
+  }
+  for (const a of list) {
+    if (em(a.sportType) === '🚶🏻‍♀️') return '🚶🏻‍♀️';
+  }
+  for (const a of list) {
+    if (em(a.sportType) === '💪') return '💪';
+  }
+  return em(list[0]?.sportType);
 }
 
 /**
- * Generate a 1080x1080 JPEG running summary card for Instagram.
- * 이모지(NotoColorEmoji) 미사용 — 한글·라틴만 Noto Sans KR로 렌더링.
+ * Instagram용 1080×1080 카드: 상단 종목 이모지, 거리·시간만, 하단 runlog.
+ * 상세 문구는 캡션(buildStravaInstagramCaption)에 기재.
  */
 export async function generateInstagramCard(
   activity: ActivityData | ActivityData[],
   backgroundPhoto?: Buffer | null
 ): Promise<Buffer> {
   const list = Array.isArray(activity) ? activity : [activity];
-  const primary = list[0];
-  const dateStr = formatCardDateYMD(
-    primary.startTimeLocal
-      ? primary.startTimeLocal.slice(0, 10)
-      : new Date().toISOString().slice(0, 10)
-  );
-
   const fonts = cardFonts();
 
   const textBase = {
@@ -171,220 +154,174 @@ export async function generateInstagramCard(
     props: {
       style: {
         position: 'absolute',
-        bottom: 48,
+        bottom: 40,
         left: 0,
         right: 0,
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        width: '100%',
         fontSize: 44,
-        fontWeight: 700,
-        ...textBase,
-        letterSpacing: 2,
+        fontWeight: 500,
+        fontFamily: 'NotoSansKR',
+        fontStyle: 'italic',
+        color: 'rgba(255,255,255,0.95)',
+        textAlign: 'center',
+        letterSpacing: 10,
+        transform: 'skewX(-10deg)',
+        textShadow: '0 2px 14px rgba(0,0,0,0.5)',
       },
-      children: 'RunLog',
+      children: 'runlog',
     },
   };
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  let children: any[];
+  let mainStack: any;
 
   if (list.length === 1) {
     const a = list[0];
-    const kind = sportLabelKo(a.sportType || 'Run');
-    const distLine =
-      a.distanceKm > 0 ? `${(Math.round(a.distanceKm * 100) / 100).toFixed(2)}km` : '';
-    const durLine = formatDurationLine(a.durationMinutes);
+    const emojiChar = stravaSportTypeEmoji(a.sportType || 'Run');
+    const distPart =
+      a.distanceKm > 0 ? `${(Math.round(a.distanceKm * 100) / 100).toFixed(2)} km` : '';
+    const durPart = formatDurationCardEn(a.durationMinutes);
+    const metricsLine = [distPart, durPart].filter(Boolean).join(' · ');
 
-    children = [
-      {
-        type: 'div',
-        props: {
-          style: {
-            fontSize: 72,
-            fontWeight: 700,
-            ...textBase,
-            lineHeight: 1.1,
-            textShadow: '0 2px 14px rgba(0,0,0,0.5)',
-          },
-          children: kind,
+    mainStack = {
+      type: 'div',
+      props: {
+        style: {
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%',
+          paddingTop: 32,
+          paddingBottom: 100,
         },
-      },
-      {
-        type: 'div',
-        props: {
-          style: {
-            fontSize: 64,
-            fontWeight: 700,
-            marginTop: 28,
-            ...textBase,
-            textShadow: '0 2px 12px rgba(0,0,0,0.45)',
-          },
-          children: dateStr,
-        },
-      },
-      ...(distLine
-        ? [
-            {
-              type: 'div',
-              props: {
-                style: {
-                  fontSize: 46,
-                  fontWeight: 600,
-                  marginTop: 20,
-                  ...textBase,
-                  textShadow: '0 2px 10px rgba(0,0,0,0.4)',
-                },
-                children: distLine,
+        children: [
+          {
+            type: 'div',
+            props: {
+              style: {
+                fontSize: 176,
+                fontFamily: 'NotoColorEmoji',
+                lineHeight: 1,
+                textAlign: 'center',
+                filter: 'drop-shadow(0 6px 18px rgba(0,0,0,0.4))',
               },
+              children: emojiChar,
             },
-          ]
-        : []),
-      ...(durLine
-        ? [
-            {
-              type: 'div',
-              props: {
-                style: {
-                  fontSize: 42,
-                  fontWeight: 400,
-                  marginTop: 12,
-                  ...textBase,
-                  color: '#f0f0f0',
-                  textShadow: '0 2px 10px rgba(0,0,0,0.4)',
-                },
-                children: durLine,
-              },
-            },
-          ]
-        : []),
-      {
-        type: 'div',
-        props: {
-          style: {
-            fontSize: 40,
-            fontWeight: 600,
-            marginTop: 28,
-            maxWidth: '90%',
-            lineHeight: 1.35,
-            ...textBase,
-            textShadow: '0 2px 10px rgba(0,0,0,0.45)',
           },
-          children: truncateText(a.activityName || 'Activity', 80),
-        },
+          ...(metricsLine
+            ? [
+                {
+                  type: 'div',
+                  props: {
+                    style: {
+                      fontSize: 56,
+                      fontWeight: 700,
+                      marginTop: 36,
+                      ...textBase,
+                      textShadow: '0 2px 16px rgba(0,0,0,0.55)',
+                      letterSpacing: 0.5,
+                    },
+                    children: metricsLine,
+                  },
+                },
+              ]
+            : []),
+        ],
       },
-      runlogFooter,
-    ];
+    };
   } else {
     const totalKm = list.reduce((s, x) => s + (x.distanceKm || 0), 0);
-    const maxRows = 5;
-    const rows = list.slice(0, maxRows);
-    const more = list.length > maxRows ? list.length - maxRows : 0;
+    const totalMin = list.reduce((s, x) => s + (x.durationMinutes || 0), 0);
+    const emojiChar = pickCardEmojiForActivities(list);
+    const distPart =
+      totalKm > 0 ? `Total ${(Math.round(totalKm * 100) / 100).toFixed(2)} km` : '';
+    const durPart = formatDurationCardEn(totalMin);
+    const metricsLine = [distPart, durPart].filter(Boolean).join(' · ');
 
-    children = [
-      {
-        type: 'div',
-        props: {
-          style: {
-            fontSize: 52,
-            fontWeight: 700,
-            ...textBase,
-            maxWidth: '92%',
-            textShadow: '0 2px 12px rgba(0,0,0,0.45)',
-          },
-          children: `활동 ${list.length}건`,
+    mainStack = {
+      type: 'div',
+      props: {
+        style: {
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%',
+          paddingTop: 32,
+          paddingBottom: 100,
         },
-      },
-      {
-        type: 'div',
-        props: {
-          style: {
-            fontSize: 40,
-            fontWeight: 600,
-            marginTop: 14,
-            ...textBase,
-            textShadow: '0 2px 10px rgba(0,0,0,0.4)',
-          },
-          children: `총 ${totalKm.toFixed(1)}km`,
-        },
-      },
-      {
-        type: 'div',
-        props: {
-          style: {
-            fontSize: 36,
-            fontWeight: 400,
-            marginTop: 10,
-            ...textBase,
-            color: '#eeeeee',
-            textShadow: '0 2px 8px rgba(0,0,0,0.35)',
-          },
-          children: dateStr,
-        },
-      },
-      ...rows.map((act, i) => {
-        const dur = formatDurationLine(act.durationMinutes);
-        const kind = sportLabelKo(act.sportType || 'Run');
-        const parts = [
-          `${i + 1}. ${kind}`,
-          truncateText(act.activityName, 24),
-          act.distanceKm > 0 ? `${act.distanceKm}km` : '',
-          dur,
-        ].filter(Boolean);
-        const line = parts.join(' · ');
-        return {
-          type: 'div',
-          props: {
-            style: {
-              fontSize: 26,
-              fontWeight: 400,
-              fontFamily: 'NotoSansKR',
-              color: 'white',
-              textAlign: 'center',
-              lineHeight: 1.35,
-              marginTop: i === 0 ? 22 : 10,
-              maxWidth: '94%',
-              textShadow: '0 1px 8px rgba(0,0,0,0.4)',
-            },
-            children: line,
-          },
-        };
-      }),
-      ...(more > 0
-        ? [
-            {
-              type: 'div',
-              props: {
-                style: {
-                  fontSize: 26,
-                  fontWeight: 400,
-                  fontFamily: 'NotoSansKR',
-                  marginTop: 12,
-                  color: '#e8e8e8',
-                  textAlign: 'center',
-                  textShadow: '0 1px 6px rgba(0,0,0,0.35)',
-                },
-                children: `외 ${more}건`,
+        children: [
+          {
+            type: 'div',
+            props: {
+              style: {
+                fontSize: 176,
+                fontFamily: 'NotoColorEmoji',
+                lineHeight: 1,
+                textAlign: 'center',
+                filter: 'drop-shadow(0 6px 18px rgba(0,0,0,0.4))',
               },
+              children: emojiChar,
             },
-          ]
-        : []),
-      runlogFooter,
-    ];
+          },
+          ...(metricsLine
+            ? [
+                {
+                  type: 'div',
+                  props: {
+                    style: {
+                      fontSize: 52,
+                      fontWeight: 700,
+                      marginTop: 36,
+                      ...textBase,
+                      textShadow: '0 2px 16px rgba(0,0,0,0.55)',
+                    },
+                    children: metricsLine,
+                  },
+                },
+              ]
+            : []),
+          {
+            type: 'div',
+            props: {
+              style: {
+                fontSize: 30,
+                fontWeight: 400,
+                marginTop: 20,
+                fontFamily: 'NotoSansKR',
+                fontStyle: 'normal',
+                color: '#e8e8e8',
+                textAlign: 'center',
+                textShadow: '0 2px 10px rgba(0,0,0,0.4)',
+              },
+              children: `${list.length} activities`,
+            },
+          },
+        ],
+      },
+    };
   }
+
+  const children: any[] = [mainStack, runlogFooter];
 
   const element = {
     type: 'div',
     props: {
       style: {
+        position: 'relative',
         width: '100%',
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingTop: 40,
-        paddingBottom: 120,
-        paddingLeft: 36,
-        paddingRight: 36,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        alignItems: 'stretch',
+        justifyContent: 'stretch',
+        backgroundColor: 'rgba(0,0,0,0.48)',
         fontFamily: 'NotoSansKR',
       },
       children,

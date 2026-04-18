@@ -64,9 +64,10 @@ export function activityKstCalendarDate(a: StravaActivity): string {
   return '';
 }
 
-/** Instagram 카드 등에 쓰는 Strava 종목 → 이모지 */
+/** Instagram 카드 등에 쓰는 Strava 종목 → 이모지 (영문·한글 표기 모두) */
 export function stravaSportTypeEmoji(sportType: string): string {
-  const key = (sportType || 'Run').trim().replace(/\s+/g, '').toLowerCase();
+  const raw = (sportType || 'Run').trim();
+  const key = raw.replace(/\s+/g, '').toLowerCase();
 
   const walk = new Set(['walk', 'hike']);
   const run = new Set(['run', 'trailrun', 'virtualrun', 'track']);
@@ -87,10 +88,15 @@ export function stravaSportTypeEmoji(sportType: string): string {
     'highintensityintervaltraining',
   ]);
 
-  if (walk.has(key)) return '🚶🏻‍♀️';
-  if (run.has(key)) return '🏃🏻‍♀️';
-  if (bike.has(key)) return '🚲';
-  if (strength.has(key)) return '💪';
+  const walkKo = new Set(['걷기', '하이킹', '등산']);
+  const runKo = new Set(['달리기', '러닝', '조깅', '트레일런']);
+  const bikeKo = new Set(['라이딩', '라이드', '자전거', '사이클', '싸이클']);
+  const strengthKo = new Set(['근력', '근육', '웨이트', '헬스', '크로스핏']);
+
+  if (walk.has(key) || walkKo.has(raw)) return '🚶🏻‍♀️';
+  if (run.has(key) || runKo.has(raw)) return '🏃🏻‍♀️';
+  if (bike.has(key) || bikeKo.has(raw)) return '🚲';
+  if (strength.has(key) || strengthKo.has(raw)) return '💪';
   return '🏃🏻‍♀️';
 }
 
@@ -312,7 +318,7 @@ export function sumActivitiesMetrics(activities: StravaActivitySummary[]) {
   };
 }
 
-function formatDurationKorean(durationMinutes: number): string {
+export function formatDurationKorean(durationMinutes: number): string {
   const h = Math.floor(durationMinutes / 60);
   const m = durationMinutes % 60;
   return `${h > 0 ? `${h}시간 ` : ''}${m}분`;
@@ -357,44 +363,38 @@ export function buildStravaRecordContent(activities: StravaActivitySummary[]): s
   return blocks.join('\n');
 }
 
-function formatDurationCaption(durationMinutes: number): string {
-  const h = Math.floor(durationMinutes / 60);
-  const m = durationMinutes % 60;
-  return `${h > 0 ? `${h}h ` : ''}${m}m`;
-}
-
-/** Instagram 캡션: 같은 날 여러 활동이면 건별 줄 + 합계. */
+/** Instagram 캡션: 카드 이미지는 거리·시간만 표시하므로, 상세는 전부 여기 텍스트로. */
 export function buildStravaInstagramCaption(
   activities: StravaActivitySummary[],
   dateStr: string
 ): string {
   const parts: string[] = [];
-  if (activities.length === 1) {
-    parts.push(`🏃 ${activities[0].activityName}`);
-  } else {
-    parts.push(`🏃 활동 ${activities.length}건`);
-  }
   parts.push(`📅 ${dateStr}`);
+  parts.push('');
+
   activities.forEach((a, i) => {
-    parts.push('');
-    parts.push(`${i + 1}. ${a.activityName}`);
-    if (a.distanceKm > 0) parts.push(`   📏 ${a.distanceKm}km`);
-    if (a.durationMinutes > 0) parts.push(`   ⏱ ${formatDurationCaption(a.durationMinutes)}`);
-    if (a.calories > 0) parts.push(`   🔥 ${a.calories}kcal`);
+    if (activities.length > 1) {
+      parts.push(`── ${i + 1}. ${a.activityName} ──`);
+    } else {
+      parts.push(`${stravaSportTypeEmoji(a.sportType)} ${a.activityName}`);
+    }
+    parts.push(...singleActivityRecordLines(a));
+    if (i < activities.length - 1) parts.push('');
   });
+
   if (activities.length > 1) {
     const sum = sumActivitiesMetrics(activities);
     parts.push('');
-    const bits: string[] = [];
-    if (sum.totalDistanceKm > 0) bits.push(`${sum.totalDistanceKm}km`);
+    parts.push('— 합계 —');
+    if (sum.totalDistanceKm > 0) parts.push(`거리: ${sum.totalDistanceKm}km`);
     if (sum.totalDurationMinutes > 0) {
-      bits.push(formatDurationCaption(sum.totalDurationMinutes));
+      parts.push(`시간: ${formatDurationKorean(sum.totalDurationMinutes)}`);
     }
-    if (sum.totalCalories > 0) bits.push(`${sum.totalCalories}kcal`);
-    if (bits.length > 0) parts.push(`합계: ${bits.join(' · ')}`);
+    if (sum.totalCalories > 0) parts.push(`소모 칼로리: ${sum.totalCalories}kcal`);
   }
+
   parts.push('');
-  parts.push('#RunLog #running #러닝 #달리기 #strava');
+  parts.push('#runlog #strava #러닝 #달리기 #걷기 #라이딩');
   return parts.join('\n');
 }
 

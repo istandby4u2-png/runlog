@@ -2,9 +2,6 @@
 
 import { RunningRecord } from '@/types';
 import { Instagram, Download } from 'lucide-react';
-import { format } from 'date-fns';
-import { ko } from 'date-fns/locale';
-
 // Apple SD Gothic Neo는 시스템 폰트이므로 별도 로드 불필요
 // Canvas에서 직접 사용 가능
 
@@ -57,8 +54,7 @@ export function InstagramShare({ record }: InstagramShareProps) {
               
               ctx.drawImage(bgImg, drawX, drawY, drawWidth, drawHeight);
               
-              // 어두운 오버레이 추가 (텍스트 가독성 향상)
-              ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+              ctx.fillStyle = 'rgba(0, 0, 0, 0.48)';
               ctx.fillRect(0, 0, 1080, 1080);
               
               resolve(null);
@@ -86,75 +82,48 @@ export function InstagramShare({ record }: InstagramShareProps) {
         ctx.fillRect(0, 0, 1080, 1080);
       }
 
-      // 텍스트 그림자 효과를 위한 설정
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-      ctx.shadowBlur = 10;
-      ctx.shadowOffsetX = 2;
+      ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = 2;
 
-      // 제목 (Apple SD Gothic Neo)
+      // 카드: 종목 이모지(수기 기록은 기본 러닝) — 상세는 공유 텍스트로만
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 80px "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic", sans-serif';
+      ctx.font =
+        '160px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+      ctx.fillText('🏃🏻‍♀️', 540, 460);
+
+      const distPart =
+        record.distance != null && record.distance > 0
+          ? `${Number(record.distance).toFixed(2)} km`
+          : '';
+      let durPart = '';
+      if (record.duration != null && record.duration > 0) {
+        const totalM = Math.max(0, Math.round(record.duration));
+        const h = Math.floor(totalM / 60);
+        const m = totalM % 60;
+        durPart = h <= 0 ? `${m}m` : m > 0 ? `${h}h ${m}m` : `${h}h`;
+      }
+      const metrics = [distPart, durPart].filter(Boolean).join(' · ');
+      if (metrics) {
+        ctx.font =
+          'bold 52px "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic", sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(metrics, 540, 560);
+      }
+
+      ctx.shadowBlur = 10;
+      ctx.save();
+      ctx.translate(540, 1028);
+      ctx.transform(1, 0, -0.18, 1, 0, 0);
       ctx.textAlign = 'center';
-      ctx.fillText(record.title, 540, 220);
-
-      // 날짜 (2025.1.17 형식)
-      const date = new Date(record.record_date);
-      const dateStr = `${date.getFullYear()}.${date.getMonth() + 1}.${date.getDate()}`;
-      ctx.font = '52px "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic", sans-serif';
-      ctx.fillStyle = '#f0f0f0';
-      ctx.fillText(dateStr, 540, 300);
-
-      // 러닝 정보 (작은 글씨)
-      let yPos = 420;
-      ctx.font = '32px "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic", sans-serif';
-      ctx.fillStyle = '#ffffff';
-
-      if (record.distance) {
-        ctx.fillText(`${record.distance}km`, 540, yPos);
-        yPos += 50;
-      }
-
-      if (record.duration) {
-        const hours = Math.floor(record.duration / 60);
-        const minutes = record.duration % 60;
-        const timeStr = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-        ctx.fillText(timeStr, 540, yPos);
-        yPos += 50;
-      }
-
-      // 날씨와 기분 (이모티콘만)
-      if (record.weather || record.mood) {
-        yPos += 30;
-        ctx.font = '64px "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic", sans-serif';
-        let emojiText = '';
-        if (record.weather) {
-          emojiText += record.weather;
-        }
-        if (record.mood) {
-          emojiText += (emojiText ? ' ' : '') + record.mood;
-        }
-        if (emojiText) {
-          ctx.fillText(emojiText, 540, yPos);
-          yPos += 80;
-        }
-      }
-
-      // 내용
-      if (record.content) {
-        yPos += 40;
-        ctx.font = '40px "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic", sans-serif';
-        ctx.fillStyle = '#e0e0e0';
-        const lines = wrapText(ctx, record.content, 900);
-        lines.forEach((line, index) => {
-          ctx.fillText(line, 540, yPos + (index * 55));
-        });
-      }
-
-      // 하단에 RunLog 로고 (펜글씨체)
-      ctx.font = 'bold 48px "Brush Script MT", cursive, "Apple SD Gothic Neo", sans-serif';
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText('RunLog', 540, 1020);
+      ctx.textBaseline = 'middle';
+      ctx.font =
+        'italic 500 44px "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic", sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.fillText('runlog', 0, 0);
+      ctx.restore();
 
       // Canvas를 이미지로 변환
       canvas.toBlob((blob) => {
@@ -175,9 +144,26 @@ export function InstagramShare({ record }: InstagramShareProps) {
 
         // 모바일에서 Web Share API 사용 가능하면 공유 옵션 제공
         if (navigator.share) {
+          const date = new Date(record.record_date);
+          const dateStr = `${date.getFullYear()}.${date.getMonth() + 1}.${date.getDate()}`;
+          const textLines = [
+            record.title,
+            `📅 ${dateStr}`,
+            record.distance != null && record.distance > 0
+              ? `거리: ${Number(record.distance).toFixed(2)} km`
+              : '',
+            record.duration != null && record.duration > 0
+              ? `시간: ${(() => {
+                  const h = Math.floor(record.duration / 60);
+                  const m = record.duration % 60;
+                  return h > 0 ? `${h}시간 ${m}분` : `${m}분`;
+                })()}`
+              : '',
+            record.content?.trim() || '',
+          ].filter(Boolean);
           const shareData = {
             title: record.title,
-            text: record.content || '',
+            text: textLines.join('\n'),
             files: [new File([blob], `runlog-${record.id}.png`, { type: 'image/png' })],
           };
           
@@ -190,25 +176,6 @@ export function InstagramShare({ record }: InstagramShareProps) {
       console.error('Instagram 이미지 생성 실패:', error);
       alert('이미지 생성 중 오류가 발생했습니다.');
     }
-  };
-
-  const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
-    const words = text.split(' ');
-    const lines: string[] = [];
-    let currentLine = words[0];
-
-    for (let i = 1; i < words.length; i++) {
-      const word = words[i];
-      const width = ctx.measureText(currentLine + ' ' + word).width;
-      if (width < maxWidth) {
-        currentLine += ' ' + word;
-      } else {
-        lines.push(currentLine);
-        currentLine = word;
-      }
-    }
-    lines.push(currentLine);
-    return lines;
   };
 
   return (

@@ -32,7 +32,10 @@ async function drawTwemojiSportCanvas(
   ctx.save();
   ctx.shadowBlur = 0;
   ctx.shadowOffsetY = 0;
+  // 서버와 동일하게 컬러 이모지 → 검정 실루엣
+  ctx.filter = 'brightness(0)';
   ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size);
+  ctx.filter = 'none';
   ctx.restore();
 }
 

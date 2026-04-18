@@ -171,10 +171,23 @@ async function loadTwemojiSvgBytes(stem: string): Promise<Buffer | null> {
   }
 }
 
+/** Twemoji 컬러 → 단색 검정(복장·자전거 등 전부 #000) */
+function twemojiSvgMonochromeBlack(svg: Buffer): Buffer {
+  let s = svg.toString('utf8');
+  s = s.replace(/fill="#[^"]*"/gi, 'fill="#000000"');
+  s = s.replace(/fill='#[^']*'/gi, "fill='#000000'");
+  s = s.replace(/fill="rgba\([^)]*\)"/gi, 'fill="#000000"');
+  s = s.replace(/stroke="#[^"]*"/gi, 'stroke="#000000"');
+  s = s.replace(/stroke='#[^']*'/gi, "stroke='#000000'");
+  s = s.replace(/stop-color="#[^"]*"/gi, 'stop-color="#000000"');
+  return Buffer.from(s, 'utf8');
+}
+
 async function twemojiPngByStem(stem: string, size: number): Promise<Buffer | null> {
   const svg = await loadTwemojiSvgBytes(stem);
   if (!svg?.length) return null;
-  return sharp(svg).resize(size, size).png().toBuffer();
+  const mono = twemojiSvgMonochromeBlack(svg);
+  return sharp(mono).resize(size, size).png().toBuffer();
 }
 
 /** Strava 종목 → Twemoji PNG, 없으면 Lucide 실루엣 */

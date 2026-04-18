@@ -7,7 +7,11 @@ import {
   sportKindFromEmojiChar,
 } from '@/lib/instagram-card-sport-icon';
 import { emojiToTwemojiSvgStem } from '@/lib/twemoji-stem';
-import { formatDurationInstagramEn, stravaSportTypeEmoji } from '@/lib/strava-api';
+import {
+  formatDurationInstagramEn,
+  formatInstagramCalendarDate,
+  stravaSportTypeEmoji,
+} from '@/lib/strava-api';
 
 /** Twemoji SVG(CC-BY 4.0): public/twemoji + CDN 폴백 — 카드에 컬러 이모지 래스터 */
 const TWEMOJI_DIR = path.join(process.cwd(), 'public', 'twemoji');
@@ -140,8 +144,20 @@ interface ActivityData {
 const W = 1080;
 const H = 1080;
 
-const SPORT_ICON_PX = 200;
-const SPORT_ICON_TOP = 300;
+/** 단일 활동 Twemoji 크기(합성). 레이아웃 스페이서 높이와 동일 */
+const ICON_BASE_PX = 112;
+const ICON_TOP = 310;
+
+function resolveCardCalendarLabel(
+  list: ActivityData[],
+  recordDate?: string | null
+): string {
+  const r = recordDate?.trim();
+  if (r) return formatInstagramCalendarDate(r);
+  const st = list[0]?.startTimeLocal?.trim();
+  if (st) return formatInstagramCalendarDate(st);
+  return formatInstagramCalendarDate(new Date().toISOString());
+}
 
 async function loadTwemojiSvgBytes(stem: string): Promise<Buffer | null> {
   const local = path.join(TWEMOJI_DIR, `${stem}.svg`);
@@ -176,10 +192,10 @@ async function rasterActivityFacePng(
 }
 
 function iconSizeForActivityCount(n: number): number {
-  if (n <= 1) return SPORT_ICON_PX;
-  if (n === 2) return 168;
-  if (n === 3) return 140;
-  return 120;
+  if (n <= 1) return ICON_BASE_PX;
+  if (n === 2) return 92;
+  if (n === 3) return 80;
+  return 68;
 }
 
 /** 활동별 컬러 이모지(걷기·달리기 등)를 한 줄로 합성 — 복수 시 순서 유지 */
@@ -196,7 +212,7 @@ async function compositeActivityTwemojis(
   const totalW = pngs.length * size + (pngs.length - 1) * gap;
   let left = Math.round((W - totalW) / 2);
   const composites = pngs.map((png) => {
-    const c = { input: png, left, top: SPORT_ICON_TOP };
+    const c = { input: png, left, top: ICON_TOP };
     left += size + gap;
     return c;
   });
@@ -212,24 +228,52 @@ function sportIconSpacer(): { type: string; props: Record<string, unknown> } {
     type: 'div',
     props: {
       style: {
-        width: SPORT_ICON_PX,
-        height: SPORT_ICON_PX,
+        width: ICON_BASE_PX,
+        height: ICON_BASE_PX,
         flexShrink: 0,
       },
     },
   };
 }
 
+/** ISO 날짜만(달력 이모지 미사용 — 그래픽이 실제 일과 불일치할 수 있음) */
+function satoriDateRow(
+  calLabel: string,
+  textBase: Record<string, unknown>
+): { type: string; props: Record<string, unknown> } {
+  return {
+    type: 'div',
+    props: {
+      style: {
+        fontSize: 26,
+        fontWeight: 600,
+        marginTop: 12,
+        ...textBase,
+        textShadow: '0 2px 10px rgba(0,0,0,0.5)',
+        letterSpacing: 0.4,
+      },
+      children: calLabel,
+    },
+  };
+}
+
 /**
- * Instagram용 1080×1080 카드: 활동별 Twemoji(🚶🏻‍♀️·🏃🏻‍♀️·💪·🚲) 합성, 거리·시간, RunLog.
- * 날짜는 캡션에만 표기(이미지 미표시).
+ * Instagram용 1080×1080 카드: 작은 Twemoji, 거리·시간·날짜(텍스트), 작은 RunLog.
  */
 export async function generateInstagramCard(
   activity: ActivityData | ActivityData[],
-  backgroundPhoto?: Buffer | null
+  backgroundPhoto?: Buffer | null,
+  recordDate?: string | null
 ): Promise<Buffer> {
   const list = Array.isArray(activity) ? activity : [activity];
   const fonts = cardFonts();
+  const calLabel = resolveCardCalendarLabel(list, recordDate);
+  const dateRowEl = satoriDateRow(calLabel, {
+    fontFamily: 'NotoSansKR',
+    fontStyle: 'normal',
+    color: 'white',
+    textAlign: 'center',
+  });
 
   const textBase = {
     fontFamily: 'NotoSansKR',
@@ -243,14 +287,14 @@ export async function generateInstagramCard(
     props: {
       style: {
         position: 'absolute',
-        bottom: 36,
+        bottom: 28,
         left: 0,
         right: 0,
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
         width: '100%',
-        fontSize: 58,
+        fontSize: 42,
         fontWeight: 400,
         fontFamily: 'DancingScript',
         fontStyle: 'normal',
@@ -283,8 +327,8 @@ export async function generateInstagramCard(
           alignItems: 'center',
           justifyContent: 'center',
           width: '100%',
-          paddingTop: 32,
-          paddingBottom: 100,
+          paddingTop: 28,
+          paddingBottom: 88,
         },
         children: [
           sportIconSpacer(),
@@ -294,18 +338,19 @@ export async function generateInstagramCard(
                   type: 'div',
                   props: {
                     style: {
-                      fontSize: 56,
+                      fontSize: 40,
                       fontWeight: 700,
-                      marginTop: 28,
+                      marginTop: 18,
                       ...textBase,
-                      textShadow: '0 2px 16px rgba(0,0,0,0.55)',
-                      letterSpacing: 0.5,
+                      textShadow: '0 2px 14px rgba(0,0,0,0.55)',
+                      letterSpacing: 0.4,
                     },
                     children: metricsLine,
                   },
                 },
               ]
             : []),
+          dateRowEl,
         ],
       },
     };
@@ -327,8 +372,8 @@ export async function generateInstagramCard(
           alignItems: 'center',
           justifyContent: 'center',
           width: '100%',
-          paddingTop: 32,
-          paddingBottom: 100,
+          paddingTop: 28,
+          paddingBottom: 88,
         },
         children: [
           sportIconSpacer(),
@@ -338,24 +383,25 @@ export async function generateInstagramCard(
                   type: 'div',
                   props: {
                     style: {
-                      fontSize: 52,
+                      fontSize: 36,
                       fontWeight: 700,
-                      marginTop: 28,
+                      marginTop: 16,
                       ...textBase,
-                      textShadow: '0 2px 16px rgba(0,0,0,0.55)',
+                      textShadow: '0 2px 14px rgba(0,0,0,0.55)',
                     },
                     children: metricsLine,
                   },
                 },
               ]
             : []),
+          dateRowEl,
           {
             type: 'div',
             props: {
               style: {
-                fontSize: 30,
+                fontSize: 22,
                 fontWeight: 400,
-                marginTop: 20,
+                marginTop: 10,
                 fontFamily: 'NotoSansKR',
                 fontStyle: 'normal',
                 color: '#e8e8e8',

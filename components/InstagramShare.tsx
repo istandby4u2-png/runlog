@@ -112,14 +112,14 @@ export function InstagramShare({ record }: InstagramShareProps) {
       ctx.shadowOffsetY = 2;
 
       try {
-        await drawTwemojiSportCanvas(ctx, 'Run', 540, 400, 200);
+        await drawTwemojiSportCanvas(ctx, 'Run', 540, 360, 108);
       } catch {
         ctx.save();
         ctx.shadowBlur = 0;
         ctx.font =
-          '160px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+          '108px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
         ctx.fillStyle = '#ffffff';
-        ctx.fillText(stravaSportTypeEmoji('Run'), 540, 440);
+        ctx.fillText(stravaSportTypeEmoji('Run'), 540, 400);
         ctx.restore();
       }
 
@@ -137,22 +137,32 @@ export function InstagramShare({ record }: InstagramShareProps) {
       const metrics = [distPart, durPart].filter(Boolean).join(' · ');
       if (metrics) {
         ctx.font =
-          'bold 52px "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic", sans-serif';
+          'bold 40px "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic", sans-serif';
         ctx.fillStyle = '#ffffff';
-        ctx.fillText(metrics, 540, 560);
+        ctx.fillText(metrics, 540, 500);
       }
 
+      ctx.font =
+        '600 26px "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic", sans-serif';
+      ctx.fillStyle = '#f2f2f2';
+      ctx.shadowBlur = 10;
+      ctx.fillText(
+        formatInstagramCalendarDate(record.record_date),
+        540,
+        548
+      );
+
       try {
-        await document.fonts.load('400 58px "Dancing Script"');
+        await document.fonts.load('400 42px "Dancing Script"');
       } catch {
         /* ignore */
       }
       ctx.shadowBlur = 10;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.font = '400 58px "Dancing Script", cursive';
+      ctx.font = '400 42px "Dancing Script", cursive';
       ctx.fillStyle = 'rgba(255,255,255,0.98)';
-      ctx.fillText('RunLog', 540, 1038);
+      ctx.fillText('RunLog', 540, 1032);
 
       canvas.toBlob((blob) => {
         if (!blob) {

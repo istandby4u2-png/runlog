@@ -337,8 +337,8 @@ export function formatDurationInstagramEn(minutes: number): string {
 const INSTAGRAM_CAPTION_HASHTAGS =
   '#runlog #running  #ランニング #ルーティン #러닝 #루틴';
 
-/** `YYYY-MM-DD` (KST 기준으로 ISO/타임스탬프 보정) */
-function instagramCaptionCalendarDate(dateStr: string): string {
+/** `YYYY-MM-DD` (KST 기준으로 ISO/타임스탬프 보정) — 카드·캡션 공통 */
+export function formatInstagramCalendarDate(dateStr: string): string {
   const s = (dateStr || '').trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   if (s.length >= 10 && s[4] === '-' && s[7] === '-') return s.slice(0, 10);
@@ -399,7 +399,7 @@ export function buildStravaInstagramCaption(
   activities: StravaActivitySummary[],
   dateStr: string
 ): string {
-  const cal = instagramCaptionCalendarDate(dateStr);
+  const cal = formatInstagramCalendarDate(dateStr);
   if (activities.length === 0) {
     return `📅 ${cal}\n\n${INSTAGRAM_CAPTION_HASHTAGS}`;
   }

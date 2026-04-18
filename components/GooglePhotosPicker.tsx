@@ -3,11 +3,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image as ImageIcon, Loader2, X, ExternalLink } from 'lucide-react';
 
+function kstTodayYmd(): string {
+  return new Date(
+    new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })
+  )
+    .toISOString()
+    .slice(0, 10);
+}
+
+/** YYYY-MM-DD만 허용, 그 외에는 KST 오늘 */
+function resolvePickerDate(dateProp?: string): string {
+  const s = dateProp?.trim().slice(0, 10) ?? '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  return kstTodayYmd();
+}
+
 export type GooglePhotosPickerProps = {
   onFileReady: (file: File) => void | Promise<void>;
   onError?: (message: string) => void;
   disabled?: boolean;
   className?: string;
+  /** picked_photos·세션에 쓰는 날짜 (기록 수정 시 record_date 등). 없으면 KST 오늘 */
+  date?: string;
 };
 
 /**
@@ -20,6 +37,7 @@ export function GooglePhotosPicker({
   onError,
   disabled,
   className = '',
+  date: dateProp,
 }: GooglePhotosPickerProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -44,14 +62,13 @@ export function GooglePhotosPicker({
     setPickerUri(null);
 
     try {
-      const today = new Date(
-        new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })
-      ).toISOString().slice(0, 10);
+      const photoDate = resolvePickerDate(dateProp);
 
       const res = await fetch('/api/photos/picker', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: today }),
+        credentials: 'include',
+        body: JSON.stringify({ date: photoDate }),
       });
       const text = await res.text();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -74,7 +91,8 @@ export function GooglePhotosPicker({
       pollingRef.current = setInterval(async () => {
         try {
           const pollRes = await fetch(
-            `/api/photos/picker?sessionId=${encodeURIComponent(sessionId)}&date=${encodeURIComponent(today)}`
+            `/api/photos/picker?sessionId=${encodeURIComponent(sessionId)}&date=${encodeURIComponent(photoDate)}`,
+            { credentials: 'include' }
           );
           const pollText = await pollRes.text();
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -82,6 +100,25 @@ export function GooglePhotosPicker({
           try {
             pollData = JSON.parse(pollText);
           } catch {
+            if (!pollRes.ok) {
+              cleanup();
+              setLoading(false);
+              const msg = `서버 응답 오류 (${pollRes.status})`;
+              setPickerError(msg);
+              onError?.(msg);
+            }
+            return;
+          }
+
+          if (!pollRes.ok) {
+            cleanup();
+            setLoading(false);
+            const msg =
+              typeof pollData?.error === 'string'
+                ? pollData.error
+                : `서버 오류 (${pollRes.status})`;
+            setPickerError(msg);
+            onError?.(msg);
             return;
           }
 
@@ -89,9 +126,33 @@ export function GooglePhotosPicker({
             cleanup();
             setLoading(false);
             try {
-              const imgRes = await fetch(pollData.blobUrl);
+              // Supabase/Vercel Blob URL은 브라우저 직접 fetch 시 CORS로 실패하는 경우가 있어 동일 출처 프록시 사용
+              const imgRes = await fetch('/api/photos/fetch-picked', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: pollData.blobUrl }),
+              });
+              if (!imgRes.ok) {
+                let errMsg = `사진을 가져오지 못했습니다. (${imgRes.status})`;
+                try {
+                  const errJson = await imgRes.json();
+                  if (typeof errJson?.error === 'string') errMsg = errJson.error;
+                } catch {
+                  /* ignore */
+                }
+                throw new Error(errMsg);
+              }
               const blob = await imgRes.blob();
-              const file = new File([blob], `google-photo-${Date.now()}.jpg`, {
+              const ext =
+                blob.type === 'image/png'
+                  ? 'png'
+                  : blob.type === 'image/webp'
+                    ? 'webp'
+                    : blob.type === 'image/gif'
+                      ? 'gif'
+                      : 'jpg';
+              const file = new File([blob], `google-photo-${Date.now()}.${ext}`, {
                 type: blob.type || 'image/jpeg',
               });
               await onFileReady(file);
@@ -109,6 +170,7 @@ export function GooglePhotosPicker({
             cleanup();
             setLoading(false);
             setPickerError(pollData.error);
+            onError?.(pollData.error);
           }
         } catch {
           // keep polling

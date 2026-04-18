@@ -635,6 +635,7 @@ export function RecordForm({ recordId }: RecordFormProps) {
           />
           <GooglePhotosPicker
             className="w-full sm:w-auto shrink-0"
+            date={recordDate}
             disabled={loading || loadingRecord}
             onFileReady={applyImageFile}
             onError={(msg) => setError(msg)}

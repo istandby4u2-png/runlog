@@ -8,6 +8,8 @@ import { Heart, MessageCircle, MapPin, Clock, Edit, Trash2 } from 'lucide-react'
 import { format } from 'date-fns';
 import { CommentSection } from './CommentSection';
 import { InstagramShare } from './InstagramShare';
+import { GooglePhotosPicker } from '@/components/GooglePhotosPicker';
+import { compressImage, validateFileSize, validateImageType } from '@/lib/image-utils';
 
 export function Feed() {
   const router = useRouter();
@@ -287,7 +289,11 @@ export function Feed() {
                 <InstagramShare record={record} />
               </div>
               {record.is_owner && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col items-end gap-1 sm:flex-row sm:items-center sm:flex-wrap sm:justify-end sm:gap-2">
+                  <FeedOwnerGooglePhoto
+                    record={record}
+                    onUpdated={fetchRecords}
+                  />
                   <button
                     onClick={() => router.push(`/records/${record.id}/edit`)}
                     className="flex items-center gap-1 px-2 py-1 bg-white border border-black text-black hover:bg-black hover:text-white transition-colors text-sm rounded"
@@ -312,6 +318,64 @@ export function Feed() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function FeedOwnerGooglePhoto({
+  record,
+  onUpdated,
+}: {
+  record: RunningRecord;
+  onUpdated: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [localErr, setLocalErr] = useState<string | null>(null);
+  const recordDateYmd = record.record_date.slice(0, 10);
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <GooglePhotosPicker
+        date={recordDateYmd}
+        className="text-xs px-2 py-1 whitespace-nowrap"
+        disabled={busy}
+        onFileReady={async (file) => {
+          setLocalErr(null);
+          if (!validateImageType(file)) {
+            setLocalErr('JPEG, PNG, GIF, WebP만 가능합니다.');
+            return;
+          }
+          if (!validateFileSize(file, 10)) {
+            setLocalErr('10MB 이하만 업로드할 수 있습니다.');
+            return;
+          }
+          setBusy(true);
+          try {
+            const compressedFile = await compressImage(file, 1920, 1920, 0.8);
+            const formData = new FormData();
+            formData.append('image', compressedFile);
+            const res = await fetch(`/api/records/${record.id}`, {
+              method: 'PATCH',
+              body: formData,
+              credentials: 'include',
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              setLocalErr(typeof data.error === 'string' ? data.error : '사진 저장에 실패했습니다.');
+              return;
+            }
+            onUpdated();
+          } catch {
+            setLocalErr('사진 저장 중 오류가 발생했습니다.');
+          } finally {
+            setBusy(false);
+          }
+        }}
+        onError={(msg) => setLocalErr(msg)}
+      />
+      {localErr && (
+        <p className="text-xs text-red-600 text-right max-w-[220px] leading-snug">{localErr}</p>
+      )}
     </div>
   );
 }

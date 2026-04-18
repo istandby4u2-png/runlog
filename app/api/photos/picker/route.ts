@@ -12,7 +12,7 @@ import {
   PickerListSessionNotFoundError,
 } from '@/lib/google-photos-api';
 import { userTokens, pickedPhotos, googlePickerSessions } from '@/lib/db-supabase';
-import { uploadImage } from '@/lib/blob-storage';
+import { uploadUserPhotoBufferWithFallback } from '@/lib/blob-storage';
 import { rfc3339ToKstYmd } from '@/lib/kst-calendar';
 
 export const dynamic = 'force-dynamic';
@@ -255,15 +255,16 @@ export async function GET(request: NextRequest) {
           continue;
         }
         try {
-          const { buffer } = await downloadPhotoAsBuffer(
+          const { buffer, contentType } = await downloadPhotoAsBuffer(
             item.mediaFile.baseUrl,
             accessToken
           );
-          const blobUrl = await uploadImage(buffer, 'records');
-          if (!blobUrl) {
-            skipped.push(`${item.id}: Blob 업로드 실패`);
+          const up = await uploadUserPhotoBufferWithFallback(buffer, contentType, 'records');
+          if (!up.ok) {
+            skipped.push(`${item.id}: ${up.error}`);
             continue;
           }
+          const blobUrl = up.url;
           await pickedPhotos.upsert(userId, kstDay, blobUrl);
           results.push({ photoDate: kstDay, blobUrl, mediaId: item.id });
         } catch (oneErr: unknown) {
@@ -290,16 +291,20 @@ export async function GET(request: NextRequest) {
     }
 
     const firstPhoto = items.find((i) => i.type === 'PHOTO') || items[0];
-    const { buffer } = await downloadPhotoAsBuffer(
+    const { buffer, contentType } = await downloadPhotoAsBuffer(
       firstPhoto.mediaFile.baseUrl,
       accessToken
     );
-    const blobUrl = await uploadImage(buffer, 'records');
+    const up = await uploadUserPhotoBufferWithFallback(buffer, contentType, 'records');
 
-    if (!blobUrl) {
+    if (!up.ok) {
       await googlePickerSessions.delete(sessionId).catch(() => {});
-      return NextResponse.json({ error: '사진 업로드에 실패했습니다.' }, { status: 500 });
+      return NextResponse.json(
+        { error: up.error || '사진 업로드에 실패했습니다.' },
+        { status: 500 }
+      );
     }
+    const blobUrl = up.url;
 
     await pickedPhotos.upsert(userId, photoDate, blobUrl);
 

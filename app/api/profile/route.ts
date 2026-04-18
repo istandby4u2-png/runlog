@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { users } from '@/lib/db-supabase';
 import { getUserIdFromRequest } from '@/lib/auth';
-import { uploadImage, deleteImage } from '@/lib/blob-storage';
+import { uploadImageWithFallbackDetailed, deleteImage } from '@/lib/blob-storage';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
@@ -100,21 +100,19 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // 새 이미지 업로드
     if (imageFile && imageFile.size > 0) {
-      try {
-        // 기존 이미지 삭제
-        if (profileImageUrl) {
-          await deleteImage(profileImageUrl);
-        }
-        
-        profileImageUrl = await uploadImage(imageFile, 'records'); // 프로필 이미지도 records 폴더에 저장
-        if (!profileImageUrl) {
-          console.error('❌ 프로필 이미지 업로드 실패');
-        }
-      } catch (error: any) {
-        console.error('❌ 프로필 이미지 업로드 중 오류 발생:', error);
+      const previousUrl = profileImageUrl;
+      const up = await uploadImageWithFallbackDetailed(imageFile, 'records');
+      if (!up.ok) {
+        return NextResponse.json(
+          { error: up.error || '프로필 이미지 업로드에 실패했습니다.' },
+          { status: 500 }
+        );
       }
+      if (previousUrl) {
+        await deleteImage(previousUrl);
+      }
+      profileImageUrl = up.url;
     }
 
     const updates: { 

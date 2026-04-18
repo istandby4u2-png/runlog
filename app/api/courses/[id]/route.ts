@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { courses } from '@/lib/db-supabase';
 import { getUserIdFromRequest } from '@/lib/auth';
-import { uploadImage, deleteImage } from '@/lib/blob-storage';
+import { uploadImageWithFallbackDetailed, deleteImage } from '@/lib/blob-storage';
 import { supabaseAdmin } from '@/lib/supabase';
 import { Visibility } from '@/types';
 
@@ -112,24 +112,19 @@ export async function PUT(
       imageUrl = null;
     }
 
-    // 새 이미지 업로드
     if (imageFile && imageFile.size > 0) {
-      try {
-        // 기존 이미지 삭제
-        if (imageUrl) {
-          await deleteImage(imageUrl);
-        }
-        
-        imageUrl = await uploadImage(imageFile, 'courses');
-        if (!imageUrl) {
-          console.error('❌ 이미지 업로드 실패: uploadImage가 null을 반환했습니다.');
-          // 이미지 업로드 실패해도 코스 수정은 계속 진행
-        }
-      } catch (error: any) {
-        console.error('❌ 이미지 업로드 중 오류 발생:', error);
-        console.error('❌ 오류 메시지:', error?.message);
-        // 이미지 업로드 실패해도 코스 수정은 계속 진행
+      const previousUrl = imageUrl;
+      const up = await uploadImageWithFallbackDetailed(imageFile, 'courses');
+      if (!up.ok) {
+        return NextResponse.json(
+          { error: up.error || '이미지 업로드에 실패했습니다.' },
+          { status: 500 }
+        );
       }
+      if (previousUrl) {
+        await deleteImage(previousUrl);
+      }
+      imageUrl = up.url;
     }
 
     await courses.update(courseId, {

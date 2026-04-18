@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runningRecords } from '@/lib/db-supabase';
 import { getUserIdFromRequest } from '@/lib/auth';
-import { uploadImage, deleteImage } from '@/lib/blob-storage';
+import { uploadImageWithFallbackDetailed, deleteImage } from '@/lib/blob-storage';
 import { Visibility } from '@/types';
 
 export async function GET(
@@ -23,6 +23,71 @@ export async function GET(
     return NextResponse.json(record);
   } catch (error) {
     console.error('Get record error:', error);
+    return NextResponse.json(
+      { error: '서버 오류가 발생했습니다.' },
+      { status: 500 }
+    );
+  }
+}
+
+/** 이미지만 교체 (피드·빠른 수정용) */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const userId = getUserIdFromRequest();
+    if (!userId) {
+      return NextResponse.json(
+        { error: '인증이 필요합니다.' },
+        { status: 401 }
+      );
+    }
+
+    const recordId = parseInt(params.id);
+    const existingRecord = await runningRecords.findById(recordId);
+    if (!existingRecord) {
+      return NextResponse.json(
+        { error: '기록을 찾을 수 없습니다.' },
+        { status: 404 }
+      );
+    }
+
+    if (existingRecord.user_id !== userId) {
+      return NextResponse.json(
+        { error: '수정 권한이 없습니다.' },
+        { status: 403 }
+      );
+    }
+
+    const formData = await request.formData();
+    const imageFile = formData.get('image') as File | null;
+    if (!imageFile || imageFile.size === 0) {
+      return NextResponse.json(
+        { error: '이미지 파일이 필요합니다.' },
+        { status: 400 }
+      );
+    }
+
+    const up = await uploadImageWithFallbackDetailed(imageFile, 'records');
+    if (!up.ok) {
+      return NextResponse.json(
+        { error: up.error || '이미지 업로드에 실패했습니다.' },
+        { status: 500 }
+      );
+    }
+    const previousUrl = existingRecord.image_url;
+    if (previousUrl) {
+      await deleteImage(previousUrl);
+    }
+    await runningRecords.update(recordId, { image_url: up.url });
+
+    return NextResponse.json(
+      { message: '사진이 변경되었습니다.', image_url: up.url },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error('Patch record image error:', error);
     return NextResponse.json(
       { error: '서버 오류가 발생했습니다.' },
       { status: 500 }
@@ -95,24 +160,20 @@ export async function PUT(
       imageUrl = null;
     }
 
-    // 새 이미지 업로드
+    // 새 이미지 업로드 (성공 후에만 기존 파일 삭제 — 업로드 실패 시 사진 유실 방지)
     if (imageFile && imageFile.size > 0) {
-      try {
-        // 기존 이미지 삭제
-        if (imageUrl) {
-          await deleteImage(imageUrl);
-        }
-        
-        imageUrl = await uploadImage(imageFile, 'records');
-        if (!imageUrl) {
-          console.error('❌ 이미지 업로드 실패: uploadImage가 null을 반환했습니다.');
-          // 이미지 업로드 실패해도 기록 수정은 계속 진행
-        }
-      } catch (error: any) {
-        console.error('❌ 이미지 업로드 중 오류 발생:', error);
-        console.error('❌ 오류 메시지:', error?.message);
-        // 이미지 업로드 실패해도 기록 수정은 계속 진행
+      const previousUrl = imageUrl;
+      const up = await uploadImageWithFallbackDetailed(imageFile, 'records');
+      if (!up.ok) {
+        return NextResponse.json(
+          { error: up.error || '이미지 업로드에 실패했습니다.' },
+          { status: 500 }
+        );
       }
+      if (previousUrl) {
+        await deleteImage(previousUrl);
+      }
+      imageUrl = up.url;
     }
 
     await runningRecords.update(recordId, {

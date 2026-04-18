@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runningRecords } from '@/lib/db-supabase';
 import { getUserIdFromRequest } from '@/lib/auth';
-import { uploadImage } from '@/lib/blob-storage';
+import { uploadImageWithFallbackDetailed } from '@/lib/blob-storage';
 import { supabaseAdmin } from '@/lib/supabase';
 import { Visibility } from '@/types';
 
@@ -77,18 +77,14 @@ export async function POST(request: NextRequest) {
 
     let imageUrl = null;
     if (imageFile && imageFile.size > 0) {
-      try {
-        imageUrl = await uploadImage(imageFile, 'records');
-        if (!imageUrl) {
-          console.error('❌ 이미지 업로드 실패: uploadImage가 null을 반환했습니다.');
-          // 이미지 업로드 실패해도 기록은 저장 가능하도록 계속 진행
-        }
-      } catch (error: any) {
-        console.error('❌ 이미지 업로드 중 오류 발생:', error);
-        console.error('❌ 오류 메시지:', error?.message);
-        // 이미지 업로드 실패해도 기록은 저장 가능하도록 계속 진행
-        // 사용자에게는 경고만 표시하고 기록은 저장
+      const up = await uploadImageWithFallbackDetailed(imageFile, 'records');
+      if (!up.ok) {
+        return NextResponse.json(
+          { error: up.error || '이미지 업로드에 실패했습니다.' },
+          { status: 500 }
+        );
       }
+      imageUrl = up.url;
     }
 
     const record = await runningRecords.create({

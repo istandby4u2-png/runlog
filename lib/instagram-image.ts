@@ -1,19 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import satori from 'satori';
 import sharp from 'sharp';
 
-/**
- * Vercel 등 서버리스에서 `process.cwd()/node_modules`가 비어 있을 수 있어
- * 프로젝트 package.json 기준으로 @fontsource 패키지 실제 경로를 고정한다.
- */
-const projectRequire = createRequire(path.join(process.cwd(), 'package.json'));
-
-const NOTO_KR_FILES = path.join(
-  path.dirname(projectRequire.resolve('@fontsource/noto-sans-kr/package.json')),
-  'files'
-);
+/** Next 번들은 최상단 createRequire를 깨뜨릴 수 있음 — cwd 기준 경로만 사용 */
+function notoKrFilesDir(): string {
+  return path.join(
+    process.cwd(),
+    'node_modules',
+    '@fontsource',
+    'noto-sans-kr',
+    'files'
+  );
+}
 
 /** 배포 시 fs 추적 보강용 — 있으면 우선 사용 */
 const PUBLIC_CARD_FONTS = path.join(
@@ -34,7 +33,7 @@ let cachedSatoriFonts: SatoriFontConfig[] | null = null;
 
 function readFontFile(filename: string): ArrayBuffer {
   const pub = path.join(PUBLIC_CARD_FONTS, filename);
-  const nm = path.join(NOTO_KR_FILES, filename);
+  const nm = path.join(notoKrFilesDir(), filename);
   const fp = fs.existsSync(pub) ? pub : nm;
   if (!fs.existsSync(fp)) {
     throw new Error(

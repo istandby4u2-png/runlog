@@ -162,6 +162,13 @@ async function twemojiPngBuffer(hex: string, size: number): Promise<Buffer | nul
   return sharp(fs.readFileSync(fp)).resize(size, size).png().toBuffer();
 }
 
+/** Satori img src는 ArrayBuffer만 허용(DataView에 Uint8Array 불가) */
+function bufferToArrayBuffer(buf: Buffer): ArrayBuffer {
+  const out = new ArrayBuffer(buf.length);
+  new Uint8Array(out).set(buf);
+  return out;
+}
+
 /** 라이딩은 Twemoji 🚲(1f6b2) PNG 합성, 그 외 Lucide 실루엣 */
 async function rasterSportIconPng(kind: SportKind): Promise<Buffer> {
   if (kind === 'ride') {
@@ -216,7 +223,6 @@ async function buildSatoriDateRow(calLabel: string): Promise<Record<string, unkn
       },
     };
   }
-  const iconBytes = new Uint8Array(iconBuf);
   return {
     type: 'div',
     props: {
@@ -232,7 +238,7 @@ async function buildSatoriDateRow(calLabel: string): Promise<Record<string, unkn
         {
           type: 'img',
           props: {
-            src: iconBytes,
+            src: bufferToArrayBuffer(iconBuf),
             width: 52,
             height: 52,
           },

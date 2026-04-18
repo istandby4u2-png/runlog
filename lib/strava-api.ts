@@ -324,6 +324,33 @@ export function formatDurationKorean(durationMinutes: number): string {
   return `${h > 0 ? `${h}시간 ` : ''}${m}분`;
 }
 
+/** Instagram 캡션·카드용 영문 시간 (`2h 43m`, `45m`) */
+export function formatDurationInstagramEn(minutes: number): string {
+  if (minutes <= 0) return '';
+  const totalM = Math.max(0, Math.round(minutes));
+  const h = Math.floor(totalM / 60);
+  const m = totalM % 60;
+  if (h <= 0) return `${m}m`;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+const INSTAGRAM_CAPTION_HASHTAGS =
+  '#runlog #running  #ランニング #ルーティン #러닝 #루틴';
+
+/** `YYYY-MM-DD` (KST 기준으로 ISO/타임스탬프 보정) */
+function instagramCaptionCalendarDate(dateStr: string): string {
+  const s = (dateStr || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (s.length >= 10 && s[4] === '-' && s[7] === '-') return s.slice(0, 10);
+  const t = Date.parse(s);
+  if (!Number.isNaN(t)) {
+    return new Date(t).toLocaleDateString('en-CA', {
+      timeZone: 'Asia/Seoul',
+    });
+  }
+  return s.slice(0, 10) || s;
+}
+
 function singleActivityRecordLines(a: StravaActivitySummary): string[] {
   const parts: string[] = [];
   if (a.distanceKm > 0) parts.push(`거리: ${a.distanceKm}km`);
@@ -363,39 +390,33 @@ export function buildStravaRecordContent(activities: StravaActivitySummary[]): s
   return blocks.join('\n');
 }
 
-/** Instagram 캡션: 카드 이미지는 거리·시간만 표시하므로, 상세는 전부 여기 텍스트로. */
+/**
+ * Instagram 업로드 캡션 (심플 블록).
+ * 단일: 종목 이모지+이름 → ⌚️ 영문 시간 → 📅 날짜 → 해시태그.
+ * 복수: 활동별 동일 블록을 빈 줄로 구분한 뒤 마지막에 📅·태그 한 번.
+ */
 export function buildStravaInstagramCaption(
   activities: StravaActivitySummary[],
   dateStr: string
 ): string {
-  const parts: string[] = [];
-  parts.push(`📅 ${dateStr}`);
-  parts.push('');
-
-  activities.forEach((a, i) => {
-    if (activities.length > 1) {
-      parts.push(`── ${i + 1}. ${a.activityName} ──`);
-    } else {
-      parts.push(`${stravaSportTypeEmoji(a.sportType)} ${a.activityName}`);
-    }
-    parts.push(...singleActivityRecordLines(a));
-    if (i < activities.length - 1) parts.push('');
-  });
-
-  if (activities.length > 1) {
-    const sum = sumActivitiesMetrics(activities);
-    parts.push('');
-    parts.push('— 합계 —');
-    if (sum.totalDistanceKm > 0) parts.push(`거리: ${sum.totalDistanceKm}km`);
-    if (sum.totalDurationMinutes > 0) {
-      parts.push(`시간: ${formatDurationKorean(sum.totalDurationMinutes)}`);
-    }
-    if (sum.totalCalories > 0) parts.push(`소모 칼로리: ${sum.totalCalories}kcal`);
+  const cal = instagramCaptionCalendarDate(dateStr);
+  if (activities.length === 0) {
+    return `📅 ${cal}\n\n${INSTAGRAM_CAPTION_HASHTAGS}`;
   }
 
-  parts.push('');
-  parts.push('#runlog #strava #러닝 #달리기 #걷기 #라이딩');
-  return parts.join('\n');
+  const blocks: string[] = [];
+  activities.forEach((a) => {
+    const name = (a.activityName || 'Activity').trim() || 'Activity';
+    const lines: string[] = [
+      `${stravaSportTypeEmoji(a.sportType)} ${name}`,
+    ];
+    const dur = formatDurationInstagramEn(a.durationMinutes);
+    if (dur) lines.push(`⌚️ ${dur}`);
+    blocks.push(lines.join('\n'));
+  });
+
+  const body = blocks.join('\n\n');
+  return `${body}\n📅 ${cal}\n\n${INSTAGRAM_CAPTION_HASHTAGS}`;
 }
 
 /** DB title: 단일은 활동명, 복수는 날짜·건수. */

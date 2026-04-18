@@ -1,12 +1,40 @@
 'use client';
 
 import { RunningRecord } from '@/types';
-import { Instagram, Download } from 'lucide-react';
+import { Instagram } from 'lucide-react';
+import {
+  sportIconSvg,
+  type SportKind,
+} from '@/lib/instagram-card-sport-icon';
 // Apple SD Gothic Neo는 시스템 폰트이므로 별도 로드 불필요
 // Canvas에서 직접 사용 가능
 
 interface InstagramShareProps {
   record: RunningRecord;
+}
+
+function sportIconDataUrl(kind: SportKind): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+    sportIconSvg(kind)
+  )}`;
+}
+
+async function drawSportIconCanvas(
+  ctx: CanvasRenderingContext2D,
+  kind: SportKind,
+  cx: number,
+  cy: number,
+  size: number
+): Promise<void> {
+  const img = new Image();
+  img.decoding = 'async';
+  const src = sportIconDataUrl(kind);
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error('sport icon load failed'));
+    img.src = src;
+  });
+  ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size);
 }
 
 export function InstagramShare({ record }: InstagramShareProps) {
@@ -88,11 +116,13 @@ export function InstagramShare({ record }: InstagramShareProps) {
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = 2;
 
-      // 카드: 종목 이모지(수기 기록은 기본 러닝) — 상세는 공유 텍스트로만
-      ctx.fillStyle = '#ffffff';
-      ctx.font =
-        '160px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
-      ctx.fillText('🏃🏻‍♀️', 540, 460);
+      // 서버 카드와 동일: SVG 스포츠 아이콘(수기 기록은 러닝 실루엣)
+      const sportKind: SportKind = 'run';
+      ctx.save();
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+      await drawSportIconCanvas(ctx, sportKind, 540, 400, 200);
+      ctx.restore();
 
       const distPart =
         record.distance != null && record.distance > 0
@@ -113,17 +143,17 @@ export function InstagramShare({ record }: InstagramShareProps) {
         ctx.fillText(metrics, 540, 560);
       }
 
+      try {
+        await document.fonts.load('400 58px "Dancing Script"');
+      } catch {
+        /* ignore */
+      }
       ctx.shadowBlur = 10;
-      ctx.save();
-      ctx.translate(540, 1028);
-      ctx.transform(1, 0, -0.18, 1, 0, 0);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.font =
-        'italic 500 44px "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic", sans-serif';
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      ctx.fillText('runlog', 0, 0);
-      ctx.restore();
+      ctx.font = '400 58px "Dancing Script", cursive';
+      ctx.fillStyle = 'rgba(255,255,255,0.98)';
+      ctx.fillText('RunLog', 540, 1038);
 
       // Canvas를 이미지로 변환
       canvas.toBlob((blob) => {

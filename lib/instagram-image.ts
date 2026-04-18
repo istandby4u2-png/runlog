@@ -2,7 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import satori from 'satori';
 import sharp from 'sharp';
-import { stravaSportTypeEmoji } from '@/lib/strava-api';
+import {
+  pickSportKindForList,
+  sportIconSvg,
+  sportKindFromEmojiChar,
+  type SportKind,
+} from '@/lib/instagram-card-sport-icon';
+import { formatDurationInstagramEn } from '@/lib/strava-api';
 
 /** Next 번들은 최상단 createRequire를 깨뜨릴 수 있음 — cwd 기준 경로만 사용 */
 function notoKrFilesDir(): string {
@@ -11,6 +17,16 @@ function notoKrFilesDir(): string {
     'node_modules',
     '@fontsource',
     'noto-sans-kr',
+    'files'
+  );
+}
+
+function dancingScriptFilesDir(): string {
+  return path.join(
+    process.cwd(),
+    'node_modules',
+    '@fontsource',
+    'dancing-script',
     'files'
   );
 }
@@ -31,7 +47,7 @@ type SatoriFontConfig = {
 };
 
 let cachedSatoriFonts: SatoriFontConfig[] | null = null;
-let cachedEmojiFont: SatoriFontConfig | null = null;
+let cachedDancingFonts: SatoriFontConfig[] | null = null;
 
 function readFontFile(filename: string): ArrayBuffer {
   const pub = path.join(PUBLIC_CARD_FONTS, filename);
@@ -41,6 +57,15 @@ function readFontFile(filename: string): ArrayBuffer {
     throw new Error(
       `Instagram 카드 폰트 없음: ${filename} (확인: ${pub} , ${nm})`
     );
+  }
+  const buf = fs.readFileSync(fp);
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+}
+
+function readDancingScriptFile(filename: string): ArrayBuffer {
+  const fp = path.join(dancingScriptFilesDir(), filename);
+  if (!fs.existsSync(fp)) {
+    throw new Error(`Dancing Script 폰트 없음: ${fp}`);
   }
   const buf = fs.readFileSync(fp);
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
@@ -72,20 +97,28 @@ function getNotoSansKRSatoriFonts(): SatoriFontConfig[] {
   return fonts;
 }
 
-/** 카드 상단 종목 이모지(ZWJ·피부톤) — Noto Color Emoji로 렌더 */
-function getNotoColorEmojiSatoriFont(): SatoriFontConfig {
-  if (cachedEmojiFont) return cachedEmojiFont;
-  cachedEmojiFont = {
-    name: 'NotoColorEmoji',
-    data: readFontFile('noto-color-emoji-emoji-400-normal.woff'),
-    weight: 400,
-    style: 'normal',
-  };
-  return cachedEmojiFont;
+/** 하단 RunLog 워드마크 — 스크립트체 */
+function getDancingScriptSatoriFonts(): SatoriFontConfig[] {
+  if (cachedDancingFonts) return cachedDancingFonts;
+  cachedDancingFonts = [
+    {
+      name: 'DancingScript',
+      data: readDancingScriptFile('dancing-script-latin-400-normal.woff'),
+      weight: 400,
+      style: 'normal',
+    },
+    {
+      name: 'DancingScript',
+      data: readDancingScriptFile('dancing-script-latin-ext-400-normal.woff'),
+      weight: 400,
+      style: 'normal',
+    },
+  ];
+  return cachedDancingFonts;
 }
 
 function cardFonts(): SatoriFontConfig[] {
-  return [...getNotoSansKRSatoriFonts(), getNotoColorEmojiSatoriFont()];
+  return [...getNotoSansKRSatoriFonts(), ...getDancingScriptSatoriFonts()];
 }
 
 /** Strava 요약과 동일 필드 (sportType 없으면 Run 취급) */
@@ -103,37 +136,39 @@ interface ActivityData {
 const W = 1080;
 const H = 1080;
 
-/** 카드용 시간 표기: `2h 43m` */
-function formatDurationCardEn(minutes: number): string {
-  if (minutes <= 0) return '';
-  const totalM = Math.max(0, Math.round(minutes));
-  const h = Math.floor(totalM / 60);
-  const m = totalM % 60;
-  if (h <= 0) return `${m}m`;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+const SPORT_ICON_PX = 200;
+const SPORT_ICON_TOP = 300;
+
+async function compositeSportIcon(jpegBuffer: Buffer, kind: SportKind): Promise<Buffer> {
+  const svg = sportIconSvg(kind);
+  const iconPng = await sharp(Buffer.from(svg))
+    .resize(SPORT_ICON_PX, SPORT_ICON_PX)
+    .png()
+    .toBuffer();
+  const left = Math.round((W - SPORT_ICON_PX) / 2);
+  return sharp(jpegBuffer)
+    .composite([{ input: iconPng, left, top: SPORT_ICON_TOP }])
+    .jpeg({ quality: 92 })
+    .toBuffer();
 }
 
-/** 여러 활동 시 카드 상단 이모지 — 자전거 등이 있으면 해당 이모지를 우선 */
-function pickCardEmojiForActivities(list: ActivityData[]): string {
-  const em = (t?: string) => stravaSportTypeEmoji(t || 'Run');
-  for (const a of list) {
-    if (em(a.sportType) === '🚲') return '🚲';
-  }
-  for (const a of list) {
-    if (em(a.sportType) === '🏃🏻‍♀️') return '🏃🏻‍♀️';
-  }
-  for (const a of list) {
-    if (em(a.sportType) === '🚶🏻‍♀️') return '🚶🏻‍♀️';
-  }
-  for (const a of list) {
-    if (em(a.sportType) === '💪') return '💪';
-  }
-  return em(list[0]?.sportType);
+/** 상단 아이콘 자리(이모지 폰트 미사용 — SVG 합성용 빈 박스) */
+function sportIconSpacer(): { type: string; props: Record<string, unknown> } {
+  return {
+    type: 'div',
+    props: {
+      style: {
+        width: SPORT_ICON_PX,
+        height: SPORT_ICON_PX,
+        flexShrink: 0,
+      },
+    },
+  };
 }
 
 /**
- * Instagram용 1080×1080 카드: 상단 종목 이모지, 거리·시간만, 하단 runlog.
- * 상세 문구는 캡션(buildStravaInstagramCaption)에 기재.
+ * Instagram용 1080×1080 카드: 상단 종목은 SVG 아이콘 합성, 거리·시간, 하단 RunLog(스크립트).
+ * 캡션은 buildStravaInstagramCaption(심플 블록).
  */
 export async function generateInstagramCard(
   activity: ActivityData | ActivityData[],
@@ -154,36 +189,36 @@ export async function generateInstagramCard(
     props: {
       style: {
         position: 'absolute',
-        bottom: 40,
+        bottom: 36,
         left: 0,
         right: 0,
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
         width: '100%',
-        fontSize: 44,
-        fontWeight: 500,
-        fontFamily: 'NotoSansKR',
-        fontStyle: 'italic',
-        color: 'rgba(255,255,255,0.95)',
+        fontSize: 58,
+        fontWeight: 400,
+        fontFamily: 'DancingScript',
+        fontStyle: 'normal',
+        color: 'rgba(255,255,255,0.98)',
         textAlign: 'center',
-        letterSpacing: 10,
-        transform: 'skewX(-10deg)',
-        textShadow: '0 2px 14px rgba(0,0,0,0.5)',
+        letterSpacing: 1,
+        textShadow: '0 3px 18px rgba(0,0,0,0.55), 0 0 2px rgba(0,0,0,0.4)',
       },
-      children: 'runlog',
+      children: 'RunLog',
     },
   };
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   let mainStack: any;
+  let sportKind: SportKind;
 
   if (list.length === 1) {
     const a = list[0];
-    const emojiChar = stravaSportTypeEmoji(a.sportType || 'Run');
+    sportKind = sportKindFromEmojiChar(a.sportType);
     const distPart =
       a.distanceKm > 0 ? `${(Math.round(a.distanceKm * 100) / 100).toFixed(2)} km` : '';
-    const durPart = formatDurationCardEn(a.durationMinutes);
+    const durPart = formatDurationInstagramEn(a.durationMinutes);
     const metricsLine = [distPart, durPart].filter(Boolean).join(' · ');
 
     mainStack = {
@@ -200,19 +235,7 @@ export async function generateInstagramCard(
           paddingBottom: 100,
         },
         children: [
-          {
-            type: 'div',
-            props: {
-              style: {
-                fontSize: 176,
-                fontFamily: 'NotoColorEmoji',
-                lineHeight: 1,
-                textAlign: 'center',
-                filter: 'drop-shadow(0 6px 18px rgba(0,0,0,0.4))',
-              },
-              children: emojiChar,
-            },
-          },
+          sportIconSpacer(),
           ...(metricsLine
             ? [
                 {
@@ -221,7 +244,7 @@ export async function generateInstagramCard(
                     style: {
                       fontSize: 56,
                       fontWeight: 700,
-                      marginTop: 36,
+                      marginTop: 28,
                       ...textBase,
                       textShadow: '0 2px 16px rgba(0,0,0,0.55)',
                       letterSpacing: 0.5,
@@ -237,10 +260,10 @@ export async function generateInstagramCard(
   } else {
     const totalKm = list.reduce((s, x) => s + (x.distanceKm || 0), 0);
     const totalMin = list.reduce((s, x) => s + (x.durationMinutes || 0), 0);
-    const emojiChar = pickCardEmojiForActivities(list);
+    sportKind = pickSportKindForList(list);
     const distPart =
       totalKm > 0 ? `Total ${(Math.round(totalKm * 100) / 100).toFixed(2)} km` : '';
-    const durPart = formatDurationCardEn(totalMin);
+    const durPart = formatDurationInstagramEn(totalMin);
     const metricsLine = [distPart, durPart].filter(Boolean).join(' · ');
 
     mainStack = {
@@ -257,19 +280,7 @@ export async function generateInstagramCard(
           paddingBottom: 100,
         },
         children: [
-          {
-            type: 'div',
-            props: {
-              style: {
-                fontSize: 176,
-                fontFamily: 'NotoColorEmoji',
-                lineHeight: 1,
-                textAlign: 'center',
-                filter: 'drop-shadow(0 6px 18px rgba(0,0,0,0.4))',
-              },
-              children: emojiChar,
-            },
-          },
+          sportIconSpacer(),
           ...(metricsLine
             ? [
                 {
@@ -278,7 +289,7 @@ export async function generateInstagramCard(
                     style: {
                       fontSize: 52,
                       fontWeight: 700,
-                      marginTop: 36,
+                      marginTop: 28,
                       ...textBase,
                       textShadow: '0 2px 16px rgba(0,0,0,0.55)',
                     },
@@ -353,10 +364,10 @@ export async function generateInstagramCard(
     base = sharp(Buffer.from(gradientSvg)).jpeg();
   }
 
-  const result = await base
+  const withOverlay = await base
     .composite([{ input: Buffer.from(overlaySvg), top: 0, left: 0 }])
     .jpeg({ quality: 92 })
     .toBuffer();
 
-  return result;
+  return compositeSportIcon(withOverlay, sportKind);
 }

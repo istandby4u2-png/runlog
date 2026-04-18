@@ -159,11 +159,7 @@ export async function publishExistingRecordToInstagram(
 
   let cardBuffer: Buffer;
   try {
-    cardBuffer = await generateInstagramCard(
-      activities,
-      photoBuffer ?? null,
-      record.record_date
-    );
+    cardBuffer = await generateInstagramCard(activities, photoBuffer ?? null);
   } catch (e) {
     return {
       ok: false,

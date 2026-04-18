@@ -392,8 +392,9 @@ export function buildStravaRecordContent(activities: StravaActivitySummary[]): s
 
 /**
  * Instagram 업로드 캡션 (심플 블록).
- * 단일: 종목 이모지+이름 → ⌚️ 영문 시간 → 📅 날짜 → 해시태그.
- * 복수: 활동별 동일 블록을 빈 줄로 구분한 뒤 마지막에 📅·태그 한 번.
+ * 단일: 종목 이모지+이름 → ⌚️ 영문 시간 → 날짜(ISO) → 해시태그.
+ * 복수: 활동별 블록 후 날짜·태그.
+ * 날짜 줄에는 📅를 쓰지 않음(대부분 폰트에서 달력 그래픽이 고정 'JUL 17' 등이라 실제 기록일과 불일치).
  */
 export function buildStravaInstagramCaption(
   activities: StravaActivitySummary[],
@@ -401,7 +402,7 @@ export function buildStravaInstagramCaption(
 ): string {
   const cal = formatInstagramCalendarDate(dateStr);
   if (activities.length === 0) {
-    return `📅 ${cal}\n\n${INSTAGRAM_CAPTION_HASHTAGS}`;
+    return `${cal}\n\n${INSTAGRAM_CAPTION_HASHTAGS}`;
   }
 
   const blocks: string[] = [];
@@ -416,7 +417,7 @@ export function buildStravaInstagramCaption(
   });
 
   const body = blocks.join('\n\n');
-  return `${body}\n📅 ${cal}\n\n${INSTAGRAM_CAPTION_HASHTAGS}`;
+  return `${body}\n\n${cal}\n\n${INSTAGRAM_CAPTION_HASHTAGS}`;
 }
 
 /** DB title: 단일은 활동명, 복수는 날짜·건수. */

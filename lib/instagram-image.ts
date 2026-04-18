@@ -3,18 +3,16 @@ import path from 'node:path';
 import satori from 'satori';
 import sharp from 'sharp';
 import {
-  pickSportKindForList,
   sportIconSvg,
   sportKindFromEmojiChar,
-  type SportKind,
 } from '@/lib/instagram-card-sport-icon';
-import {
-  formatDurationInstagramEn,
-  formatInstagramCalendarDate,
-} from '@/lib/strava-api';
+import { emojiToTwemojiSvgStem } from '@/lib/twemoji-stem';
+import { formatDurationInstagramEn, stravaSportTypeEmoji } from '@/lib/strava-api';
 
-/** Twemoji SVG(CC-BY 4.0): public/twemoji — Satori/Noto에 없는 이모지 대체 */
+/** Twemoji SVG(CC-BY 4.0): public/twemoji + CDN 폴백 — 카드에 컬러 이모지 래스터 */
 const TWEMOJI_DIR = path.join(process.cwd(), 'public', 'twemoji');
+const TWEMOJI_CDN =
+  'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg';
 
 /** Next 번들은 최상단 createRequire를 깨뜨릴 수 있음 — cwd 기준 경로만 사용 */
 function notoKrFilesDir(): string {
@@ -145,108 +143,67 @@ const H = 1080;
 const SPORT_ICON_PX = 200;
 const SPORT_ICON_TOP = 300;
 
-function resolveCardCalendarLabel(
-  list: ActivityData[],
-  recordDate?: string | null
-): string {
-  const r = recordDate?.trim();
-  if (r) return formatInstagramCalendarDate(r);
-  const st = list[0]?.startTimeLocal?.trim();
-  if (st) return formatInstagramCalendarDate(st);
-  return formatInstagramCalendarDate(new Date().toISOString());
-}
-
-async function twemojiPngBuffer(hex: string, size: number): Promise<Buffer | null> {
-  const fp = path.join(TWEMOJI_DIR, `${hex}.svg`);
-  if (!fs.existsSync(fp)) return null;
-  return sharp(fs.readFileSync(fp)).resize(size, size).png().toBuffer();
-}
-
-/** Satori img src는 ArrayBuffer만 허용(DataView에 Uint8Array 불가) */
-function bufferToArrayBuffer(buf: Buffer): ArrayBuffer {
-  const out = new ArrayBuffer(buf.length);
-  new Uint8Array(out).set(buf);
-  return out;
-}
-
-/** 라이딩은 Twemoji 🚲(1f6b2) PNG 합성, 그 외 Lucide 실루엣 */
-async function rasterSportIconPng(kind: SportKind): Promise<Buffer> {
-  if (kind === 'ride') {
-    const bike = await twemojiPngBuffer('1f6b2', SPORT_ICON_PX);
-    if (bike) return bike;
+async function loadTwemojiSvgBytes(stem: string): Promise<Buffer | null> {
+  const local = path.join(TWEMOJI_DIR, `${stem}.svg`);
+  if (fs.existsSync(local)) return fs.readFileSync(local);
+  try {
+    const res = await fetch(`${TWEMOJI_CDN}/${stem}.svg`);
+    if (!res.ok) return null;
+    return Buffer.from(await res.arrayBuffer());
+  } catch {
+    return null;
   }
-  const svg = sportIconSvg(kind);
-  return sharp(Buffer.from(svg))
-    .resize(SPORT_ICON_PX, SPORT_ICON_PX)
-    .png()
-    .toBuffer();
 }
 
-async function compositeSportIcon(jpegBuffer: Buffer, kind: SportKind): Promise<Buffer> {
-  const iconPng = await rasterSportIconPng(kind);
-  const left = Math.round((W - SPORT_ICON_PX) / 2);
+async function twemojiPngByStem(stem: string, size: number): Promise<Buffer | null> {
+  const svg = await loadTwemojiSvgBytes(stem);
+  if (!svg?.length) return null;
+  return sharp(svg).resize(size, size).png().toBuffer();
+}
+
+/** Strava 종목 → Twemoji PNG, 없으면 Lucide 실루엣 */
+async function rasterActivityFacePng(
+  sportType: string | undefined,
+  size: number
+): Promise<Buffer> {
+  const em = stravaSportTypeEmoji(sportType ?? 'Run');
+  const stem = emojiToTwemojiSvgStem(em);
+  const tw = await twemojiPngByStem(stem, size);
+  if (tw) return tw;
+  const kind = sportKindFromEmojiChar(sportType);
+  const svg = sportIconSvg(kind);
+  return sharp(Buffer.from(svg)).resize(size, size).png().toBuffer();
+}
+
+function iconSizeForActivityCount(n: number): number {
+  if (n <= 1) return SPORT_ICON_PX;
+  if (n === 2) return 168;
+  if (n === 3) return 140;
+  return 120;
+}
+
+/** 활동별 컬러 이모지(걷기·달리기 등)를 한 줄로 합성 — 복수 시 순서 유지 */
+async function compositeActivityTwemojis(
+  jpegBuffer: Buffer,
+  list: ActivityData[]
+): Promise<Buffer> {
+  const n = Math.max(1, list.length);
+  const size = iconSizeForActivityCount(n);
+  const gap = Math.max(16, Math.round(size * 0.12));
+  const pngs = await Promise.all(
+    list.map((a) => rasterActivityFacePng(a.sportType, size))
+  );
+  const totalW = pngs.length * size + (pngs.length - 1) * gap;
+  let left = Math.round((W - totalW) / 2);
+  const composites = pngs.map((png) => {
+    const c = { input: png, left, top: SPORT_ICON_TOP };
+    left += size + gap;
+    return c;
+  });
   return sharp(jpegBuffer)
-    .composite([{ input: iconPng, left, top: SPORT_ICON_TOP }])
+    .composite(composites)
     .jpeg({ quality: 92 })
     .toBuffer();
-}
-
-/** Twemoji 📅 + YYYY-MM-DD (Satori img + Noto 텍스트) */
-async function buildSatoriDateRow(calLabel: string): Promise<Record<string, unknown>> {
-  const iconBuf = await twemojiPngBuffer('1f4c5', 52);
-  const textBlock = {
-    type: 'div',
-    props: {
-      style: {
-        fontSize: 44,
-        fontWeight: 700,
-        color: '#ffffff',
-        fontFamily: 'NotoSansKR',
-        fontStyle: 'normal',
-        textShadow: '0 2px 12px rgba(0,0,0,0.55)',
-      },
-      children: calLabel,
-    },
-  };
-  if (!iconBuf) {
-    return {
-      type: 'div',
-      props: {
-        style: {
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginTop: 18,
-        },
-        children: [textBlock],
-      },
-    };
-  }
-  return {
-    type: 'div',
-    props: {
-      style: {
-        display: 'flex',
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 14,
-        marginTop: 18,
-      },
-      children: [
-        {
-          type: 'img',
-          props: {
-            src: bufferToArrayBuffer(iconBuf),
-            width: 52,
-            height: 52,
-          },
-        },
-        textBlock,
-      ],
-    },
-  };
 }
 
 /** 상단 아이콘 자리(이모지 폰트 미사용 — SVG 합성용 빈 박스) */
@@ -264,18 +221,15 @@ function sportIconSpacer(): { type: string; props: Record<string, unknown> } {
 }
 
 /**
- * Instagram용 1080×1080 카드: 종목 아이콘 합성(라이딩은 Twemoji 🚲), 거리·시간·날짜, RunLog.
- * @param recordDate 기록일 `YYYY-MM-DD` 등 — 캡션과 동일 규칙(formatInstagramCalendarDate)
+ * Instagram용 1080×1080 카드: 활동별 Twemoji(🚶🏻‍♀️·🏃🏻‍♀️·💪·🚲) 합성, 거리·시간, RunLog.
+ * 날짜는 캡션에만 표기(이미지 미표시).
  */
 export async function generateInstagramCard(
   activity: ActivityData | ActivityData[],
-  backgroundPhoto?: Buffer | null,
-  recordDate?: string | null
+  backgroundPhoto?: Buffer | null
 ): Promise<Buffer> {
   const list = Array.isArray(activity) ? activity : [activity];
   const fonts = cardFonts();
-  const calLabel = resolveCardCalendarLabel(list, recordDate);
-  const dateRowEl = await buildSatoriDateRow(calLabel);
 
   const textBase = {
     fontFamily: 'NotoSansKR',
@@ -311,11 +265,9 @@ export async function generateInstagramCard(
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   let mainStack: any;
-  let sportKind: SportKind;
 
   if (list.length === 1) {
     const a = list[0];
-    sportKind = sportKindFromEmojiChar(a.sportType);
     const distPart =
       a.distanceKm > 0 ? `${(Math.round(a.distanceKm * 100) / 100).toFixed(2)} km` : '';
     const durPart = formatDurationInstagramEn(a.durationMinutes);
@@ -354,14 +306,12 @@ export async function generateInstagramCard(
                 },
               ]
             : []),
-          dateRowEl,
         ],
       },
     };
   } else {
     const totalKm = list.reduce((s, x) => s + (x.distanceKm || 0), 0);
     const totalMin = list.reduce((s, x) => s + (x.durationMinutes || 0), 0);
-    sportKind = pickSportKindForList(list);
     const distPart =
       totalKm > 0 ? `Total ${(Math.round(totalKm * 100) / 100).toFixed(2)} km` : '';
     const durPart = formatDurationInstagramEn(totalMin);
@@ -399,7 +349,6 @@ export async function generateInstagramCard(
                 },
               ]
             : []),
-          dateRowEl,
           {
             type: 'div',
             props: {
@@ -471,5 +420,5 @@ export async function generateInstagramCard(
     .jpeg({ quality: 92 })
     .toBuffer();
 
-  return compositeSportIcon(withOverlay, sportKind);
+  return compositeActivityTwemojis(withOverlay, list);
 }

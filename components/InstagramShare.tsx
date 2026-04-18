@@ -2,143 +2,92 @@
 
 import { RunningRecord } from '@/types';
 import { Instagram } from 'lucide-react';
+import { emojiToTwemojiSvgStem } from '@/lib/twemoji-stem';
 import {
-  sportIconSvg,
-  type SportKind,
-} from '@/lib/instagram-card-sport-icon';
-import { formatInstagramCalendarDate } from '@/lib/strava-api';
-// Apple SD Gothic Neo는 시스템 폰트이므로 별도 로드 불필요
-// Canvas에서 직접 사용 가능
+  formatInstagramCalendarDate,
+  stravaSportTypeEmoji,
+} from '@/lib/strava-api';
 
 interface InstagramShareProps {
   record: RunningRecord;
 }
 
-function sportIconDataUrl(kind: SportKind): string {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-    sportIconSvg(kind)
-  )}`;
-}
-
-async function drawSportIconCanvas(
+/** 수기 기록은 Run — 서버 카드와 동일 Twemoji(러닝女) */
+async function drawTwemojiSportCanvas(
   ctx: CanvasRenderingContext2D,
-  kind: SportKind,
+  sportType: string,
   cx: number,
   cy: number,
   size: number
 ): Promise<void> {
+  const stem = emojiToTwemojiSvgStem(stravaSportTypeEmoji(sportType));
   const img = new Image();
   img.decoding = 'async';
-  const src = sportIconDataUrl(kind);
+  img.crossOrigin = 'anonymous';
   await new Promise<void>((resolve, reject) => {
     img.onload = () => resolve();
-    img.onerror = () => reject(new Error('sport icon load failed'));
-    img.src = src;
+    img.onerror = () => reject(new Error('twemoji sport'));
+    img.src = `/twemoji/${stem}.svg`;
   });
-  ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size);
-}
-
-/** 서버 카드와 동일: Twemoji 📅 + 날짜 */
-async function drawCalendarRowCanvas(
-  ctx: CanvasRenderingContext2D,
-  calLabel: string,
-  centerX: number,
-  centerY: number
-): Promise<void> {
-  const iconSize = 52;
-  const gap = 14;
-  let icon: HTMLImageElement | null = null;
-  try {
-    const img = new Image();
-    img.decoding = 'async';
-    img.crossOrigin = 'anonymous';
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error('calendar icon'));
-      img.src = '/twemoji/1f4c5.svg';
-    });
-    icon = img;
-  } catch {
-    icon = null;
-  }
-
   ctx.save();
-  ctx.font =
-    'bold 44px "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic", sans-serif';
-  ctx.fillStyle = '#ffffff';
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
-  ctx.shadowBlur = 12;
-  ctx.textBaseline = 'middle';
-  const tw = ctx.measureText(calLabel).width;
-  const iconW = icon ? iconSize + gap : 0;
-  const totalW = iconW + tw;
-  let x = centerX - totalW / 2;
-  if (icon) {
-    ctx.shadowBlur = 0;
-    ctx.drawImage(icon, x, centerY - iconSize / 2, iconSize, iconSize);
-    x += iconW;
-  }
-  ctx.textAlign = 'left';
-  ctx.shadowBlur = 12;
-  ctx.fillText(calLabel, x, centerY);
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+  ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size);
   ctx.restore();
 }
 
 export function InstagramShare({ record }: InstagramShareProps) {
   const generateInstagramImage = async () => {
     try {
-      // Canvas 생성
       const canvas = document.createElement('canvas');
-      canvas.width = 1080; // Instagram 권장 크기
+      canvas.width = 1080;
       canvas.height = 1080;
       const ctx = canvas.getContext('2d');
-      
+
       if (!ctx) {
         alert('Canvas를 생성할 수 없습니다.');
         return;
       }
 
-      // 이미지가 있으면 배경으로 사용, 없으면 그라데이션 배경
       const imageUrl = record.image_url;
       if (imageUrl) {
         const bgImg = new Image();
         bgImg.crossOrigin = 'anonymous';
-        
+
         await new Promise((resolve, reject) => {
           bgImg.onload = () => {
             try {
-              // 이미지를 배경으로 전체 채우기 (비율 유지하며 크롭)
               const imgAspect = bgImg.width / bgImg.height;
               const canvasAspect = 1080 / 1080;
-              
-              let drawWidth, drawHeight, drawX, drawY;
-              
+
+              let drawWidth: number;
+              let drawHeight: number;
+              let drawX: number;
+              let drawY: number;
+
               if (imgAspect > canvasAspect) {
-                // 이미지가 더 넓음 - 높이에 맞춤
                 drawHeight = 1080;
                 drawWidth = bgImg.width * (1080 / bgImg.height);
                 drawX = (1080 - drawWidth) / 2;
                 drawY = 0;
               } else {
-                // 이미지가 더 높음 - 너비에 맞춤
                 drawWidth = 1080;
                 drawHeight = bgImg.height * (1080 / bgImg.width);
                 drawX = 0;
                 drawY = (1080 - drawHeight) / 2;
               }
-              
+
               ctx.drawImage(bgImg, drawX, drawY, drawWidth, drawHeight);
-              
+
               ctx.fillStyle = 'rgba(0, 0, 0, 0.48)';
               ctx.fillRect(0, 0, 1080, 1080);
-              
+
               resolve(null);
             } catch (error) {
               reject(error);
             }
           };
           bgImg.onerror = () => {
-            // 이미지 로드 실패 시 그라데이션 배경 사용 (블랙&화이트)
             const gradient = ctx.createLinearGradient(0, 0, 1080, 1080);
             gradient.addColorStop(0, '#1a1a1a');
             gradient.addColorStop(1, '#4a4a4a');
@@ -149,7 +98,6 @@ export function InstagramShare({ record }: InstagramShareProps) {
           bgImg.src = imageUrl;
         });
       } else {
-        // 이미지가 없으면 그라데이션 배경 (블랙&화이트)
         const gradient = ctx.createLinearGradient(0, 0, 1080, 1080);
         gradient.addColorStop(0, '#1a1a1a');
         gradient.addColorStop(1, '#4a4a4a');
@@ -163,13 +111,17 @@ export function InstagramShare({ record }: InstagramShareProps) {
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = 2;
 
-      // 서버 카드와 동일: SVG 스포츠 아이콘(수기 기록은 러닝 실루엣)
-      const sportKind: SportKind = 'run';
-      ctx.save();
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetY = 0;
-      await drawSportIconCanvas(ctx, sportKind, 540, 400, 200);
-      ctx.restore();
+      try {
+        await drawTwemojiSportCanvas(ctx, 'Run', 540, 400, 200);
+      } catch {
+        ctx.save();
+        ctx.shadowBlur = 0;
+        ctx.font =
+          '160px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(stravaSportTypeEmoji('Run'), 540, 440);
+        ctx.restore();
+      }
 
       const distPart =
         record.distance != null && record.distance > 0
@@ -190,14 +142,6 @@ export function InstagramShare({ record }: InstagramShareProps) {
         ctx.fillText(metrics, 540, 560);
       }
 
-      ctx.textAlign = 'center';
-      await drawCalendarRowCanvas(
-        ctx,
-        formatInstagramCalendarDate(record.record_date),
-        540,
-        628
-      );
-
       try {
         await document.fonts.load('400 58px "Dancing Script"');
       } catch {
@@ -210,14 +154,12 @@ export function InstagramShare({ record }: InstagramShareProps) {
       ctx.fillStyle = 'rgba(255,255,255,0.98)';
       ctx.fillText('RunLog', 540, 1038);
 
-      // Canvas를 이미지로 변환
       canvas.toBlob((blob) => {
         if (!blob) {
           alert('이미지 생성에 실패했습니다.');
           return;
         }
 
-        // 다운로드
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -227,13 +169,11 @@ export function InstagramShare({ record }: InstagramShareProps) {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        // 모바일에서 Web Share API 사용 가능하면 공유 옵션 제공
         if (navigator.share) {
-          const date = new Date(record.record_date);
-          const dateStr = `${date.getFullYear()}.${date.getMonth() + 1}.${date.getDate()}`;
+          const cal = formatInstagramCalendarDate(record.record_date);
           const textLines = [
             record.title,
-            `📅 ${dateStr}`,
+            cal,
             record.distance != null && record.distance > 0
               ? `거리: ${Number(record.distance).toFixed(2)} km`
               : '',
@@ -251,7 +191,7 @@ export function InstagramShare({ record }: InstagramShareProps) {
             text: textLines.join('\n'),
             files: [new File([blob], `runlog-${record.id}.png`, { type: 'image/png' })],
           };
-          
+
           navigator.share(shareData).catch((error) => {
             console.log('공유 실패:', error);
           });

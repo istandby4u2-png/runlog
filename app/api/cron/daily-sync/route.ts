@@ -213,11 +213,7 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        const cardBuffer = await generateInstagramCard(
-          activities,
-          photoBuffer,
-          todayStr
-        );
+        const cardBuffer = await generateInstagramCard(activities, photoBuffer);
         const cardUrl = await uploadImage(cardBuffer, 'records');
 
         if (cardUrl) {

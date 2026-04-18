@@ -197,11 +197,7 @@ export async function syncStravaDayForUser(
   try {
     const igToken = await userTokens.findByProvider(userId, 'instagram');
     if (igToken?.access_token && igToken.extra_data) {
-      const cardBuffer = await generateInstagramCard(
-        activities,
-        photoBuffer,
-        dateStr
-      );
+      const cardBuffer = await generateInstagramCard(activities, photoBuffer);
       const uploaded = await uploadPublicJpegWithFallback(cardBuffer, 'records');
 
       if (uploaded.ok) {

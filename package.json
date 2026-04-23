@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/sync-twemoji-for-card.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "sync:twemoji": "node scripts/sync-twemoji-for-card.mjs"
   },
   "dependencies": {
     "@flow-js/garmin-connect": "^1.6.16",

@@ -402,6 +402,8 @@ function BatchBackfill() {
           if (instagramOnly) dayQs.set('instagramOnly', '1');
           const res = await fetch(`/api/cron/batch-sync/day?${dayQs.toString()}`, {
             credentials: 'include',
+            // 서버 maxDuration(최대 300s) + 여유 — 브라우저 무한 대기 방지
+            signal: AbortSignal.timeout(290_000),
           });
           const data = await res.json();
           if (!res.ok || !data.ok) {

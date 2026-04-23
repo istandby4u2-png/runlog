@@ -14,10 +14,13 @@ import {
   stravaSportTypeEmoji,
 } from '@/lib/strava-api';
 
-/** Twemoji SVG(CC-BY 4.0): public/twemoji + CDN 폴백 — 카드에 컬러 이모지 래스터 */
+/**
+ * Twemoji SVG는 public/twemoji/{stem}.svg 만 사용(동기 fs).
+ * 런타임 CDN fetch는 지연·타임아웃·방화벽 이슈가 있어 사용하지 않음 — 없으면 Lucide 폴백.
+ */
 const TWEMOJI_DIR = path.join(process.cwd(), 'public', 'twemoji');
-const TWEMOJI_CDN =
-  'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg';
+
+const twemojiSvgFileCache = new Map<string, Buffer>();
 
 /** Next 번들은 최상단 createRequire를 깨뜨릴 수 있음 — cwd 기준 경로만 사용 */
 function notoKrFilesDir(): string {
@@ -160,20 +163,18 @@ function resolveCardCalendarLabel(
   return formatInstagramCalendarDate(new Date().toISOString());
 }
 
-async function loadTwemojiSvgBytes(stem: string): Promise<Buffer | null> {
+function loadTwemojiSvgBytes(stem: string): Buffer | null {
+  const hit = twemojiSvgFileCache.get(stem);
+  if (hit) return hit;
   const local = path.join(TWEMOJI_DIR, `${stem}.svg`);
-  if (fs.existsSync(local)) return fs.readFileSync(local);
-  try {
-    const res = await fetch(`${TWEMOJI_CDN}/${stem}.svg`);
-    if (!res.ok) return null;
-    return Buffer.from(await res.arrayBuffer());
-  } catch {
-    return null;
-  }
+  if (!fs.existsSync(local)) return null;
+  const buf = fs.readFileSync(local);
+  twemojiSvgFileCache.set(stem, buf);
+  return buf;
 }
 
 async function twemojiPngByStem(stem: string, size: number): Promise<Buffer | null> {
-  const svg = await loadTwemojiSvgBytes(stem);
+  const svg = loadTwemojiSvgBytes(stem);
   if (!svg?.length) return null;
   const recolored = recolorTwemojiSvgBuffer(stem, svg);
   return sharp(recolored).resize(size, size).png().toBuffer();

@@ -168,7 +168,14 @@ function SettingsContent() {
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded flex items-center gap-2 text-red-800 text-sm">
           <AlertCircle className="w-4 h-4 shrink-0" />
-          연결 중 오류가 발생했습니다: {error}
+          {error === 'google_reconnect' ? (
+            <>
+              Google 인증이 만료되었거나 취소되었습니다. Google Photos «연결 해제» 후 다시 «연결»해
+              주세요.
+            </>
+          ) : (
+            <>연결 중 오류가 발생했습니다: {error}</>
+          )}
         </div>
       )}
 
@@ -229,8 +236,8 @@ function SettingsContent() {
             Google Photos에서 Instagram 카드 배경으로 사용할 사진을 선택하세요.
             선택하지 않으면 기본 그라데이션 배경이 사용됩니다.
           </p>
-          <PhotoPicker />
-          <GooglePhotosBatchPicker />
+          <PhotoPicker onGoogleConnectionInvalid={fetchConnections} />
+          <GooglePhotosBatchPicker onGoogleConnectionInvalid={fetchConnections} />
         </div>
       )}
 
@@ -562,7 +569,11 @@ function BatchBackfill() {
   );
 }
 
-function PhotoPicker() {
+function PhotoPicker({
+  onGoogleConnectionInvalid,
+}: {
+  onGoogleConnectionInvalid?: () => void | Promise<void>;
+}) {
   const [pickerState, setPickerState] = useState<
     'idle' | 'creating' | 'picking' | 'processing' | 'done' | 'error'
   >('idle');
@@ -598,12 +609,23 @@ function PhotoPicker() {
         credentials: 'include',
         body: JSON.stringify({ date: photoDate }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Session 생성 실패');
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        reconnect?: boolean;
+        sessionId?: string;
+        pickerUri?: string;
+      };
+      if (!res.ok) {
+        if (data.reconnect) void onGoogleConnectionInvalid?.();
+        throw new Error(data.error || 'Session 생성 실패');
+      }
 
       const { sessionId, pickerUri: uri } = data;
       if (typeof sessionId !== 'string' || !sessionId.trim()) {
         throw new Error('세션 ID를 받지 못했습니다.');
+      }
+      if (typeof uri !== 'string' || !uri.trim()) {
+        throw new Error('Google Photos Picker URL을 받지 못했습니다.');
       }
       setPickerUri(uri);
       setPickerState('picking');
@@ -616,11 +638,27 @@ function PhotoPicker() {
             `/api/photos/picker?sessionId=${encodeURIComponent(sessionId)}&date=${encodeURIComponent(photoDate)}`,
             { credentials: 'include' }
           );
-          const pollData = await pollRes.json();
+          const pollData = (await pollRes.json().catch(() => ({}))) as {
+            status?: string;
+            blobUrl?: string;
+            error?: string;
+            reconnect?: boolean;
+          };
+          if (!pollRes.ok) {
+            cleanup();
+            if (pollData.reconnect) void onGoogleConnectionInvalid?.();
+            setErrorMsg(
+              typeof pollData.error === 'string'
+                ? pollData.error
+                : `서버 오류 (${pollRes.status})`
+            );
+            setPickerState('error');
+            return;
+          }
 
           if (pollData.status === 'done') {
             cleanup();
-            setResultUrl(pollData.blobUrl);
+            setResultUrl(pollData.blobUrl ?? null);
             setPickerState('done');
           } else if (pollData.status === 'empty') {
             cleanup();
@@ -628,6 +666,7 @@ function PhotoPicker() {
             setPickerState('error');
           } else if (pollData.error) {
             cleanup();
+            if (pollData.reconnect) void onGoogleConnectionInvalid?.();
             setErrorMsg(pollData.error);
             setPickerState('error');
           }
@@ -707,7 +746,11 @@ type BatchPickerResult = {
   photoItems?: number;
 };
 
-function GooglePhotosBatchPicker() {
+function GooglePhotosBatchPicker({
+  onGoogleConnectionInvalid,
+}: {
+  onGoogleConnectionInvalid?: () => void | Promise<void>;
+}) {
   const [pickerState, setPickerState] = useState<
     'idle' | 'creating' | 'picking' | 'done' | 'error'
   >('idle');
@@ -736,8 +779,16 @@ function GooglePhotosBatchPicker() {
         credentials: 'include',
         body: JSON.stringify({ batch: true }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '세션 생성 실패');
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        reconnect?: boolean;
+        sessionId?: string;
+        pickerUri?: string;
+      };
+      if (!res.ok) {
+        if (data.reconnect) void onGoogleConnectionInvalid?.();
+        throw new Error(data.error || '세션 생성 실패');
+      }
 
       const sessionId = data.sessionId as string | undefined;
       const uri = data.pickerUri as string | undefined;
@@ -754,7 +805,30 @@ function GooglePhotosBatchPicker() {
             `/api/photos/picker?sessionId=${encodeURIComponent(sessionId)}&batch=1`,
             { credentials: 'include' }
           );
-          const pollData = await pollRes.json();
+          const pollData = (await pollRes.json().catch(() => ({}))) as {
+            status?: string;
+            batch?: boolean;
+            error?: string;
+            reconnect?: boolean;
+            message?: string;
+            saved?: number;
+            results?: BatchPickerResult['results'];
+            skipped?: string[];
+            truncated?: boolean;
+            processed?: number;
+            photoItems?: number;
+          };
+          if (!pollRes.ok) {
+            cleanup();
+            if (pollData.reconnect) void onGoogleConnectionInvalid?.();
+            setPickerState('error');
+            setErrorMsg(
+              typeof pollData.error === 'string'
+                ? pollData.error
+                : `서버 오류 (${pollRes.status})`
+            );
+            return;
+          }
 
           if (pollData.status === 'done' && pollData.batch) {
             cleanup();
@@ -775,6 +849,7 @@ function GooglePhotosBatchPicker() {
             );
           } else if (pollData.error) {
             cleanup();
+            if (pollData.reconnect) void onGoogleConnectionInvalid?.();
             setPickerState('error');
             setErrorMsg(pollData.error as string);
           }

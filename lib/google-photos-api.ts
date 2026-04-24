@@ -57,6 +57,30 @@ const GOOGLE_REDIRECT_URI =
 export const GOOGLE_PICKER_SCOPE_ERROR =
   'Google Photos Picker 권한이 없습니다. 아래 «연결 해제» 후 «연결»을 눌러 다시 승인해 주세요. (이전 Library API만 허용된 연결은 재연결이 필요합니다.)';
 
+/** Refresh token was revoked, expired, or the Google account password changed. */
+export const GOOGLE_RECONNECT_MESSAGE =
+  'Google Photos 연결이 만료되었거나 해제되었습니다. Settings에서 Google Photos «연결 해제» 후 다시 «연결»해 주세요.';
+
+export class GoogleRefreshTokenInvalidError extends Error {
+  readonly code = 'GOOGLE_REFRESH_TOKEN_INVALID' as const;
+
+  constructor(message: string = GOOGLE_RECONNECT_MESSAGE) {
+    super(message);
+    this.name = 'GoogleRefreshTokenInvalidError';
+  }
+}
+
+export function isGoogleRefreshTokenInvalidError(
+  e: unknown
+): e is GoogleRefreshTokenInvalidError {
+  if (e instanceof GoogleRefreshTokenInvalidError) return true;
+  // Cross-bundle fallback: instanceof can fail when the same module is loaded in separate bundles
+  if (e && typeof e === 'object' && 'code' in e) {
+    return (e as { code: unknown }).code === 'GOOGLE_REFRESH_TOKEN_INVALID';
+  }
+  return false;
+}
+
 export function getGoogleAuthUrl(state?: string): string {
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
@@ -79,6 +103,46 @@ function isGoogleInsufficientScopeResponse(status: number, bodyText: string): bo
   );
 }
 
+/** Token endpoint 4xx body: JSON, rarely form-encoded; BOM/prefixes can make JSON.parse fail. */
+function parseGoogleTokenErrorResponse(raw: string): { error?: string; error_description?: string } {
+  const text = raw.replace(/^\uFEFF/, '').trim();
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as { error?: string; error_description?: string };
+  } catch {
+    if (text.includes('=') && !text.startsWith('{')) {
+      try {
+        const params = new URLSearchParams(text);
+        const err = params.get('error');
+        if (err) return { error: err, error_description: params.get('error_description') ?? undefined };
+      } catch {
+        /* ignore */
+      }
+    }
+    return {};
+  }
+}
+
+function isInvalidGrantBody(text: string, parsed: { error?: string }): boolean {
+  const code = String(parsed.error ?? '')
+    .trim()
+    .toLowerCase();
+  if (code === 'invalid_grant') return true;
+  return /\binvalid_grant\b/.test(text);
+}
+
+/**
+ * `instanceof GoogleRefreshTokenInvalidError` can fail across bundles; use in API catch
+ * as a fallback when the generic `Google token refresh failed: {...}` is still thrown.
+ */
+export function isGoogleOauthResponseRevokedErrorMessage(msg: string): boolean {
+  if (!msg) return false;
+  if (!/invalid_grant/i.test(msg)) return false;
+  if (/Google token (refresh|exchange) failed/i.test(msg)) return true;
+  if (/Token has been expired or revoked/i.test(msg)) return true;
+  return false;
+}
+
 export async function exchangeCodeForTokens(code: string) {
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -93,6 +157,10 @@ export async function exchangeCodeForTokens(code: string) {
   });
   if (!res.ok) {
     const text = await res.text();
+    const parsed = parseGoogleTokenErrorResponse(text);
+    if (text.includes('invalid_grant') || isInvalidGrantBody(text, parsed)) {
+      throw new GoogleRefreshTokenInvalidError();
+    }
     throw new Error(`Google token exchange failed: ${text}`);
   }
   return (await res.json()) as {
@@ -119,6 +187,10 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
   });
   if (!res.ok) {
     const text = await res.text();
+    const parsed = parseGoogleTokenErrorResponse(text);
+    if (text.includes('invalid_grant') || isInvalidGrantBody(text, parsed)) {
+      throw new GoogleRefreshTokenInvalidError();
+    }
     throw new Error(`Google token refresh failed: ${text}`);
   }
   return (await res.json()) as { access_token: string; expires_in: number };

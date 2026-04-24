@@ -10,6 +10,9 @@ import {
   deletePickerSession,
   PickerListNotReadyError,
   PickerListSessionNotFoundError,
+  GOOGLE_RECONNECT_MESSAGE,
+  isGoogleOauthResponseRevokedErrorMessage,
+  isGoogleRefreshTokenInvalidError,
 } from '@/lib/google-photos-api';
 import { userTokens, pickedPhotos, googlePickerSessions } from '@/lib/db-supabase';
 import { uploadUserPhotoBufferWithFallback } from '@/lib/blob-storage';
@@ -25,6 +28,13 @@ const MAX_BATCH_PHOTOS = 120;
 
 /** Picker 세션은 생성 직후의 액세스 토큰과 함께 쓰이는 경우가 있어, 폴링마다 refresh 하면 NOT_FOUND 가 날 수 있음 */
 const ACCESS_TOKEN_REFRESH_IF_EXPIRES_WITHIN_MS = 120_000;
+
+async function clearGooglePhotosOnInvalidGrant(userId: number, sessionId?: string) {
+  await userTokens.delete(userId, 'google_photos').catch(() => {});
+  if (sessionId?.trim()) {
+    await googlePickerSessions.delete(sessionId.trim()).catch(() => {});
+  }
+}
 
 /**
  * POST /api/photos/picker
@@ -95,7 +105,21 @@ export async function POST(request: NextRequest) {
       batch: batchMode,
     });
   } catch (e: unknown) {
+    if (isGoogleRefreshTokenInvalidError(e)) {
+      await clearGooglePhotosOnInvalidGrant(userId);
+      return NextResponse.json(
+        { error: GOOGLE_RECONNECT_MESSAGE, code: 'GOOGLE_REFRESH_TOKEN_INVALID', reconnect: true },
+        { status: 403 }
+      );
+    }
     const msg = e instanceof Error ? e.message : 'Picker 세션 생성 중 오류가 발생했습니다.';
+    if (isGoogleOauthResponseRevokedErrorMessage(msg)) {
+      await clearGooglePhotosOnInvalidGrant(userId);
+      return NextResponse.json(
+        { error: GOOGLE_RECONNECT_MESSAGE, code: 'GOOGLE_REFRESH_TOKEN_INVALID', reconnect: true },
+        { status: 403 }
+      );
+    }
     console.error('[POST /api/photos/picker]', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
@@ -318,7 +342,21 @@ export async function GET(request: NextRequest) {
       totalPicked: items.length,
     });
   } catch (e: unknown) {
+    if (isGoogleRefreshTokenInvalidError(e)) {
+      await clearGooglePhotosOnInvalidGrant(userId, sessionId);
+      return NextResponse.json(
+        { error: GOOGLE_RECONNECT_MESSAGE, code: 'GOOGLE_REFRESH_TOKEN_INVALID', reconnect: true },
+        { status: 403 }
+      );
+    }
     const msg = e instanceof Error ? e.message : 'Picker 폴링 중 오류가 발생했습니다.';
+    if (isGoogleOauthResponseRevokedErrorMessage(msg)) {
+      await clearGooglePhotosOnInvalidGrant(userId, sessionId);
+      return NextResponse.json(
+        { error: GOOGLE_RECONNECT_MESSAGE, code: 'GOOGLE_REFRESH_TOKEN_INVALID', reconnect: true },
+        { status: 403 }
+      );
+    }
     console.error('[GET /api/photos/picker]', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }

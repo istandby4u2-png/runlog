@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { userTokens } from '@/lib/db-supabase';
-import { refreshAccessToken } from '@/lib/google-photos-api';
+import {
+  isGoogleRefreshTokenInvalidError,
+  refreshAccessToken,
+  GOOGLE_RECONNECT_MESSAGE,
+} from '@/lib/google-photos-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,9 +42,23 @@ export async function GET() {
       result.google_photos = { has_refresh_token: false };
     }
   } catch (err: unknown) {
-    result.google_photos = {
-      error: err instanceof Error ? err.message : String(err),
-    };
+    if (isGoogleRefreshTokenInvalidError(err)) {
+      try {
+        await userTokens.delete(userId, 'google_photos');
+      } catch {
+        /* ignore */
+      }
+      result.google_photos = {
+        has_refresh_token: false,
+        needs_reconnect: true,
+        message: err.message,
+        code: err.code,
+      };
+    } else {
+      result.google_photos = {
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 
   // --- Instagram token check ---

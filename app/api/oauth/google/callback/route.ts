@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { exchangeCodeForTokens } from '@/lib/google-photos-api';
+import {
+  exchangeCodeForTokens,
+  isGoogleRefreshTokenInvalidError,
+} from '@/lib/google-photos-api';
 import { userTokens } from '@/lib/db-supabase';
 
 export async function GET(request: NextRequest) {
@@ -46,6 +49,11 @@ export async function GET(request: NextRequest) {
       new URL('/settings?success=google_photos', request.url)
     );
   } catch (err: unknown) {
+    if (isGoogleRefreshTokenInvalidError(err)) {
+      return NextResponse.redirect(
+        new URL('/settings?error=google_reconnect', request.url)
+      );
+    }
     const msg = err instanceof Error ? err.message : String(err);
     console.error('Google OAuth callback error:', msg);
     return NextResponse.redirect(

@@ -21,6 +21,8 @@ function resolvePickerDate(dateProp?: string): string {
 export type GooglePhotosPickerProps = {
   onFileReady: (file: File) => void | Promise<void>;
   onError?: (message: string) => void;
+  /** Google 토큰이 취소·만료되어 서버가 연결을 지운 뒤 — 예: Settings 연결 상태 refetch */
+  onGoogleConnectionInvalid?: () => void | Promise<void>;
   disabled?: boolean;
   className?: string;
   /** picked_photos·세션에 쓰는 날짜 (기록 수정 시 record_date 등). 없으면 KST 오늘 */
@@ -35,6 +37,7 @@ export type GooglePhotosPickerProps = {
 export function GooglePhotosPicker({
   onFileReady,
   onError,
+  onGoogleConnectionInvalid,
   disabled,
   className = '',
   date: dateProp,
@@ -78,7 +81,10 @@ export function GooglePhotosPicker({
       } catch {
         throw new Error(`서버 응답 오류 (${res.status})`);
       }
-      if (!res.ok) throw new Error(data.error || 'Session 생성 실패');
+      if (!res.ok) {
+        if (data.reconnect) void onGoogleConnectionInvalid?.();
+        throw new Error(data.error || 'Session 생성 실패');
+      }
 
       const sessionId = data.sessionId;
       if (typeof sessionId !== 'string' || !sessionId.trim()) {
@@ -113,6 +119,7 @@ export function GooglePhotosPicker({
           if (!pollRes.ok) {
             cleanup();
             setLoading(false);
+            if (pollData?.reconnect) void onGoogleConnectionInvalid?.();
             const msg =
               typeof pollData?.error === 'string'
                 ? pollData.error
@@ -169,6 +176,7 @@ export function GooglePhotosPicker({
           } else if (pollData.error) {
             cleanup();
             setLoading(false);
+            if (pollData.reconnect) void onGoogleConnectionInvalid?.();
             setPickerError(pollData.error);
             onError?.(pollData.error);
           }

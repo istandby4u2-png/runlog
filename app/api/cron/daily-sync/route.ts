@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserIdFromRequest } from '@/lib/auth';
 import type { StravaActivitySummary } from '@/lib/strava-api';
 import {
-  getValidAccessToken,
   fetchActivitiesByDate,
   sumActivitiesMetrics,
   buildStravaRecordContent,

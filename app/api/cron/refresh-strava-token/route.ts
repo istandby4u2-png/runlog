@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 /**
- * Proactively refresh Strava access tokens (every ~4h via Vercel Cron).
+ * Proactively refresh Strava access tokens (daily via Vercel Cron; Hobby plan allows once/day).
  * Keeps refresh tokens exercised and access tokens warm before daily sync.
  */
 export async function GET(request: NextRequest) {

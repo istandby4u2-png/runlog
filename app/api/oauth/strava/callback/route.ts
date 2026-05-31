@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exchangeCodeForTokens } from '@/lib/strava-api';
+import { ensureStravaAccessToken } from '@/lib/strava-token';
 import { userTokens } from '@/lib/db-supabase';
 
 export async function GET(request: NextRequest) {
@@ -41,6 +42,14 @@ export async function GET(request: NextRequest) {
         athlete_name: `${tokens.athlete.firstname} ${tokens.athlete.lastname}`.trim(),
       },
     });
+
+    // Verify refresh_token works immediately after reconnect
+    const verified = await ensureStravaAccessToken(userId);
+    if (!verified.ok) {
+      return NextResponse.redirect(
+        new URL('/settings?error=strava_refresh_verify_failed', request.url)
+      );
+    }
 
     return NextResponse.redirect(
       new URL('/settings?success=strava', request.url)

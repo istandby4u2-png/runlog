@@ -163,6 +163,40 @@ export async function exchangeCodeForTokens(code: string) {
   };
 }
 
+/** Refresh token was revoked or Strava app access was removed. */
+export const STRAVA_RECONNECT_MESSAGE =
+  'Strava 연결이 만료되었거나 해제되었습니다. Settings에서 «재연결»을 눌러주세요.';
+
+export class StravaRefreshTokenInvalidError extends Error {
+  readonly code = 'STRAVA_REFRESH_TOKEN_INVALID' as const;
+
+  constructor(message: string = STRAVA_RECONNECT_MESSAGE) {
+    super(message);
+    this.name = 'StravaRefreshTokenInvalidError';
+  }
+}
+
+export function isStravaRefreshTokenInvalidError(
+  e: unknown
+): e is StravaRefreshTokenInvalidError {
+  if (e instanceof StravaRefreshTokenInvalidError) return true;
+  if (e && typeof e === 'object' && 'code' in e) {
+    return (e as { code: unknown }).code === 'STRAVA_REFRESH_TOKEN_INVALID';
+  }
+  return false;
+}
+
+function isStravaRefreshInvalidResponse(status: number, text: string): boolean {
+  if (status === 401) return true;
+  if (status !== 400) return false;
+  const lower = text.toLowerCase();
+  return (
+    lower.includes('refresh_token') ||
+    lower.includes('invalid') ||
+    lower.includes('authorization error')
+  );
+}
+
 export async function refreshAccessToken(refreshToken: string) {
   const res = await fetch('https://www.strava.com/oauth/token', {
     method: 'POST',
@@ -176,6 +210,9 @@ export async function refreshAccessToken(refreshToken: string) {
   });
   if (!res.ok) {
     const text = await res.text();
+    if (isStravaRefreshInvalidResponse(res.status, text)) {
+      throw new StravaRefreshTokenInvalidError();
+    }
     throw new Error(`Strava token refresh failed: ${text}`);
   }
   return (await res.json()) as {

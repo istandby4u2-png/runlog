@@ -9,6 +9,7 @@ import {
   buildStravaInstagramCaption,
   stravaSyncRecordTitle,
 } from '@/lib/strava-api';
+import { ensureStravaAccessToken } from '@/lib/strava-token';
 import {
   publishImagePost,
   refreshLongLivedToken,
@@ -77,31 +78,21 @@ export async function GET(request: NextRequest) {
   // ------------------------------------------------------------------
   let activities: StravaActivitySummary[] = [];
   try {
-    const stravaToken = await userTokens.findByProvider(syncUserId, 'strava');
-    if (!stravaToken?.refresh_token) {
-      log.push('Strava: not connected');
+    const strava = await ensureStravaAccessToken(syncUserId);
+    if (!strava.ok) {
+      log.push(
+        strava.reason === 'refresh_invalid'
+          ? `Strava: ${strava.message}`
+          : 'Strava: not connected'
+      );
       return NextResponse.json({ ok: true, log, synced: false });
     }
 
-    const valid = await getValidAccessToken({
-      access_token: stravaToken.access_token,
-      refresh_token: stravaToken.refresh_token,
-      token_expires_at: stravaToken.token_expires_at,
-    });
-
-    // Update stored tokens if refreshed
-    if (valid.access_token !== stravaToken.access_token) {
-      await userTokens.upsert({
-        user_id: syncUserId,
-        provider: 'strava',
-        access_token: valid.access_token,
-        refresh_token: valid.refresh_token,
-        token_expires_at: new Date(valid.expires_at * 1000).toISOString(),
-      });
+    if (strava.refreshed) {
       log.push('Strava: token refreshed');
     }
 
-    activities = await fetchActivitiesByDate(valid.access_token, todayStr);
+    activities = await fetchActivitiesByDate(strava.accessToken, todayStr);
     if (activities.length > 0) {
       const detail = activities
         .map((a) => `${a.activityName} ${a.distanceKm}km`)

@@ -5,13 +5,13 @@
 
 import type { StravaActivitySummary } from '@/lib/strava-api';
 import {
-  getValidAccessToken,
   fetchActivitiesByDate,
   sumActivitiesMetrics,
   buildStravaRecordContent,
   buildStravaInstagramCaption,
   stravaSyncRecordTitle,
 } from '@/lib/strava-api';
+import { ensureStravaAccessToken } from '@/lib/strava-token';
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { publishPublicImageToInstagramForUser } from '@/lib/instagram-user-publish';
 import { runningRecords, userTokens, pickedPhotos } from '@/lib/db-supabase';
@@ -63,11 +63,15 @@ export async function syncStravaDayForUser(
 
   let activities: StravaActivitySummary[] = [];
   try {
-    const stravaToken = await userTokens.findByProvider(userId, 'strava');
-    if (!stravaToken?.refresh_token) {
-      log.push('Strava: not connected');
+    const strava = await ensureStravaAccessToken(userId);
+    if (!strava.ok) {
+      log.push(
+        strava.reason === 'refresh_invalid'
+          ? `Strava: ${strava.message}`
+          : 'Strava: not connected'
+      );
       return {
-        ok: true,
+        ok: strava.reason !== 'refresh_invalid',
         date: dateStr,
         synced: false,
         skipped: true,
@@ -78,24 +82,11 @@ export async function syncStravaDayForUser(
       };
     }
 
-    const valid = await getValidAccessToken({
-      access_token: stravaToken.access_token,
-      refresh_token: stravaToken.refresh_token,
-      token_expires_at: stravaToken.token_expires_at,
-    });
-
-    if (valid.access_token !== stravaToken.access_token) {
-      await userTokens.upsert({
-        user_id: userId,
-        provider: 'strava',
-        access_token: valid.access_token,
-        refresh_token: valid.refresh_token,
-        token_expires_at: new Date(valid.expires_at * 1000).toISOString(),
-      });
+    if (strava.refreshed) {
       log.push('Strava: token refreshed');
     }
 
-    activities = await fetchActivitiesByDate(valid.access_token, dateStr);
+    activities = await fetchActivitiesByDate(strava.accessToken, dateStr);
     if (activities.length > 0) {
       const detail = activities
         .map((a) => `${a.activityName} ${a.distanceKm}km`)

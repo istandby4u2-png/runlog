@@ -4,12 +4,12 @@
 
 import type { StravaActivitySummary } from '@/lib/strava-api';
 import {
-  getValidAccessToken,
   fetchActivitiesByDate,
   buildStravaInstagramCaption,
 } from '@/lib/strava-api';
+import { ensureStravaAccessToken } from '@/lib/strava-token';
 import { generateInstagramCard } from '@/lib/instagram-image';
-import { pickedPhotos, runningRecords, userTokens } from '@/lib/db-supabase';
+import { pickedPhotos, runningRecords } from '@/lib/db-supabase';
 import { uploadPublicJpegWithFallback } from '@/lib/blob-storage';
 import { publishPublicImageToInstagramForUser } from '@/lib/instagram-user-publish';
 
@@ -49,32 +49,16 @@ async function loadActivitiesForRecord(
     burned_calories: number | null;
   }
 ): Promise<{ activities: StravaActivitySummary[]; source: 'strava' | 'synthetic' }> {
-  const stravaToken = await userTokens.findByProvider(userId, 'strava');
-  if (!stravaToken?.refresh_token) {
+  const strava = await ensureStravaAccessToken(userId);
+  if (!strava.ok) {
     return {
       activities: syntheticActivitiesFromRecord(record),
       source: 'synthetic',
     };
   }
 
-  const valid = await getValidAccessToken({
-    access_token: stravaToken.access_token,
-    refresh_token: stravaToken.refresh_token,
-    token_expires_at: stravaToken.token_expires_at,
-  });
-
-  if (valid.access_token !== stravaToken.access_token) {
-    await userTokens.upsert({
-      user_id: userId,
-      provider: 'strava',
-      access_token: valid.access_token,
-      refresh_token: valid.refresh_token,
-      token_expires_at: new Date(valid.expires_at * 1000).toISOString(),
-    });
-  }
-
   const activities = await fetchActivitiesByDate(
-    valid.access_token,
+    strava.accessToken,
     record.record_date
   );
   if (activities.length > 0) {

@@ -23,6 +23,8 @@ import {
 interface ConnectionStatus {
   connected: boolean;
   expiresAt?: string | null;
+  autoRefresh?: boolean;
+  athleteName?: string;
 }
 
 type Connections = Record<string, ConnectionStatus>;
@@ -139,11 +141,28 @@ function SettingsContent() {
     }
   }
 
-  function formatExpiry(iso: string | null | undefined): string {
-    if (!iso) return '';
-    const d = new Date(iso);
+  function formatExpiry(
+    provider: string,
+    conn: ConnectionStatus | undefined
+  ): string {
+    if (!conn?.connected) return '';
+
+    if (provider === 'strava' && conn.autoRefresh) {
+      const name = conn.athleteName ? ` (${conn.athleteName})` : '';
+      if (conn.expiresAt) {
+        const ms = new Date(conn.expiresAt).getTime() - Date.now();
+        if (ms > 0) {
+          const hours = Math.ceil(ms / (1000 * 60 * 60));
+          return `자동 갱신 연결됨${name} · access token ${hours}시간 후 갱신`;
+        }
+      }
+      return `자동 갱신 연결됨${name} · 동기화 시 access token 자동 갱신`;
+    }
+
+    if (!conn.expiresAt) return '';
+    const d = new Date(conn.expiresAt);
     const days = Math.ceil((d.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    if (days <= 0) return '만료됨';
+    if (days <= 0) return 'access token 만료 (재연결 또는 사용 시 갱신)';
     return `${days}일 남음`;
   }
 
@@ -160,7 +179,7 @@ function SettingsContent() {
       {success && (
         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded flex items-center gap-2 text-green-800 text-sm">
           <CheckCircle className="w-4 h-4 shrink-0" />
-          {success === 'strava' && 'Strava 연결 완료!'}
+          {success === 'strava' && 'Strava 연결 완료! access token은 약 6시간마다 자동 갱신됩니다.'}
           {success === 'google_photos' && 'Google Photos 연결 완료!'}
           {success === 'instagram' && 'Instagram 연결 완료!'}
         </div>
@@ -173,6 +192,12 @@ function SettingsContent() {
               Google 인증이 만료되었거나 취소되었습니다. Google Photos «연결 해제» 후 다시 «연결»해
               주세요.
             </>
+          ) : error === 'strava_refresh_verify_failed' ? (
+            <>
+              Strava 연결 후 토큰 갱신 확인에 실패했습니다. «재연결»을 다시 시도해 주세요.
+            </>
+          ) : error?.startsWith('strava_') ? (
+            <>Strava 연결 중 오류: {error.replace(/^strava_/, '')}. «재연결»을 다시 시도해 주세요.</>
           ) : (
             <>연결 중 오류가 발생했습니다: {error}</>
           )}
@@ -200,7 +225,7 @@ function SettingsContent() {
             description="러닝 기록 자동 가져오기 (거리, 시간, 심박, 칼로리, 페이스)"
             connected={connections?.strava?.connected ?? false}
             connectUrl="/api/oauth/strava"
-            expiryLabel={formatExpiry(connections?.strava?.expiresAt)}
+            expiryLabel={formatExpiry('strava', connections?.strava)}
           />
 
           {/* Google Photos */}
@@ -210,7 +235,7 @@ function SettingsContent() {
             description="오늘 날짜 사진 선택(Picker API). 예전 Library 전용 연결이면 재연결이 필요할 수 있습니다."
             connected={connections?.google_photos?.connected ?? false}
             connectUrl="/api/oauth/google"
-            expiryLabel={formatExpiry(connections?.google_photos?.expiresAt)}
+            expiryLabel={formatExpiry('google_photos', connections?.google_photos)}
             onDisconnect={
               connections?.google_photos?.connected ? disconnectGooglePhotos : undefined
             }
@@ -223,7 +248,7 @@ function SettingsContent() {
             description="러닝 카드 이미지 자동 게시 (Business/Creator 계정 필요)"
             connected={connections?.instagram?.connected ?? false}
             connectUrl="/api/oauth/instagram"
-            expiryLabel={formatExpiry(connections?.instagram?.expiresAt)}
+            expiryLabel={formatExpiry('instagram', connections?.instagram)}
           />
         </div>
       )}

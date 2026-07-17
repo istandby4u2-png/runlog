@@ -11,7 +11,7 @@
     "sync:twemoji": "node scripts/sync-twemoji-for-card.mjs"
   },
   "dependencies": {
-    "@flow-js/garmin-connect": "^1.6.16",
+    "@flow-js/garmin-connect": "^1.6.17",
     "@fontsource/dancing-script": "^5.2.5",
     "@fontsource/noto-color-emoji": "^5.2.12",
     "@fontsource/noto-sans-kr": "^5.2.9",

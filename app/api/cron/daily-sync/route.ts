@@ -2,13 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserIdFromRequest } from '@/lib/auth';
 import type { StravaActivitySummary } from '@/lib/strava-api';
 import {
-  fetchActivitiesByDate,
   sumActivitiesMetrics,
   buildStravaRecordContent,
   buildStravaInstagramCaption,
   stravaSyncRecordTitle,
 } from '@/lib/strava-api';
-import { ensureStravaAccessToken } from '@/lib/strava-token';
+import { fetchDayActivitySummaries } from '@/lib/garmin-api';
 import {
   publishImagePost,
   refreshLongLivedToken,
@@ -73,35 +72,22 @@ export async function GET(request: NextRequest) {
   }
 
   // ------------------------------------------------------------------
-  // 1. Strava: fetch all activities for sync date (KST calendar day)
+  // 1. Garmin: fetch all activities for sync date (KST calendar day)
+  //    (Strava Developer Program 유료화로 2026-07부터 Garmin Connect 사용)
   // ------------------------------------------------------------------
   let activities: StravaActivitySummary[] = [];
   try {
-    const strava = await ensureStravaAccessToken(syncUserId);
-    if (!strava.ok) {
-      log.push(
-        strava.reason === 'refresh_invalid'
-          ? `Strava: ${strava.message}`
-          : 'Strava: not connected'
-      );
-      return NextResponse.json({ ok: true, log, synced: false });
-    }
-
-    if (strava.refreshed) {
-      log.push('Strava: token refreshed');
-    }
-
-    activities = await fetchActivitiesByDate(strava.accessToken, todayStr);
+    activities = await fetchDayActivitySummaries(todayStr);
     if (activities.length > 0) {
       const detail = activities
         .map((a) => `${a.activityName} ${a.distanceKm}km`)
         .join(' · ');
-      log.push(`Strava: found ${activities.length} activity(ies) — ${detail}`);
+      log.push(`Garmin: found ${activities.length} activity(ies) — ${detail}`);
     } else {
-      log.push('Strava: 해당 날짜 활동 없음');
+      log.push('Garmin: 해당 날짜 활동 없음');
     }
   } catch (err: unknown) {
-    log.push(`Strava error: ${err instanceof Error ? err.message : String(err)}`);
+    log.push(`Garmin error: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   if (activities.length === 0) {

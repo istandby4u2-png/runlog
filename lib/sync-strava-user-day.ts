@@ -1,17 +1,17 @@
 /**
- * Strava + RunLog + Instagram flow for a single user and calendar day (KST date string).
+ * Garmin + RunLog + Instagram flow for a single user and calendar day (KST date string).
  * Used by batch backfill and can be shared by test-sync later.
+ * (활동 소스: Strava → Garmin Connect 전환, 2026-07. Strava Developer Program 유료화 대응)
  */
 
 import type { StravaActivitySummary } from '@/lib/strava-api';
 import {
-  fetchActivitiesByDate,
   sumActivitiesMetrics,
   buildStravaRecordContent,
   buildStravaInstagramCaption,
   stravaSyncRecordTitle,
 } from '@/lib/strava-api';
-import { ensureStravaAccessToken } from '@/lib/strava-token';
+import { fetchDayActivitySummaries } from '@/lib/garmin-api';
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { publishPublicImageToInstagramForUser } from '@/lib/instagram-user-publish';
 import { runningRecords, userTokens, pickedPhotos } from '@/lib/db-supabase';
@@ -63,40 +63,17 @@ export async function syncStravaDayForUser(
 
   let activities: StravaActivitySummary[] = [];
   try {
-    const strava = await ensureStravaAccessToken(userId);
-    if (!strava.ok) {
-      log.push(
-        strava.reason === 'refresh_invalid'
-          ? `Strava: ${strava.message}`
-          : 'Strava: not connected'
-      );
-      return {
-        ok: strava.reason !== 'refresh_invalid',
-        date: dateStr,
-        synced: false,
-        skipped: true,
-        skipReason: 'strava_not_connected',
-        recordId: null,
-        igMediaId: null,
-        log,
-      };
-    }
-
-    if (strava.refreshed) {
-      log.push('Strava: token refreshed');
-    }
-
-    activities = await fetchActivitiesByDate(strava.accessToken, dateStr);
+    activities = await fetchDayActivitySummaries(dateStr);
     if (activities.length > 0) {
       const detail = activities
         .map((a) => `${a.activityName} ${a.distanceKm}km`)
         .join(' · ');
-      log.push(`Strava: ${activities.length}건 — ${detail}`);
+      log.push(`Garmin: ${activities.length}건 — ${detail}`);
     } else {
-      log.push('Strava: 해당 날짜 활동 없음');
+      log.push('Garmin: 해당 날짜 활동 없음');
     }
   } catch (err: unknown) {
-    log.push(`Strava error: ${err instanceof Error ? err.message : String(err)}`);
+    log.push(`Garmin error: ${err instanceof Error ? err.message : String(err)}`);
     return {
       ok: false,
       date: dateStr,

@@ -1,8 +1,17 @@
 import { GarminConnect } from '@flow-js/garmin-connect';
-import { ActivityType, type IActivity } from '@flow-js/garmin-connect';
+import {
+  ActivityType,
+  type IActivity,
+  type IOauth1Token,
+  type IOauth2Token,
+} from '@flow-js/garmin-connect';
+import type { StravaActivitySummary } from '@/lib/strava-api';
 
 const GARMIN_EMAIL = process.env.GARMIN_EMAIL;
 const GARMIN_PASSWORD = process.env.GARMIN_PASSWORD;
+/** scripts/garmin-login.mjs로 발급한 OAuth 토큰 JSON — MFA 계정도 동작, oauth1은 ~1년 유효 */
+const GARMIN_OAUTH1_TOKEN = process.env.GARMIN_OAUTH1_TOKEN;
+const GARMIN_OAUTH2_TOKEN = process.env.GARMIN_OAUTH2_TOKEN;
 
 export interface GarminActivitySummary {
   activityId: number;
@@ -42,6 +51,19 @@ function toSummary(activity: IActivity): GarminActivitySummary {
 }
 
 export async function createGarminClient(): Promise<GarminConnect> {
+  // 우선: 미리 발급한 OAuth 토큰 (비밀번호 로그인 불가·MFA 계정용, HttpClient가 oauth2 자동 갱신)
+  if (GARMIN_OAUTH1_TOKEN && GARMIN_OAUTH2_TOKEN) {
+    const client = new GarminConnect({
+      username: GARMIN_EMAIL || '',
+      password: GARMIN_PASSWORD || '',
+    });
+    client.loadToken(
+      JSON.parse(GARMIN_OAUTH1_TOKEN) as IOauth1Token,
+      JSON.parse(GARMIN_OAUTH2_TOKEN) as IOauth2Token
+    );
+    return client;
+  }
+
   if (!GARMIN_EMAIL || !GARMIN_PASSWORD) {
     throw new Error('GARMIN_EMAIL / GARMIN_PASSWORD 환경 변수가 설정되지 않았습니다.');
   }
@@ -51,6 +73,60 @@ export async function createGarminClient(): Promise<GarminConnect> {
   });
   await client.login();
   return client;
+}
+
+/** Garmin activityType.typeKey → Strava sport_type 호환 문자열 (카드 이모지·캡션 로직 재사용) */
+function garminTypeToStravaSportType(typeKey: string): string {
+  const key = (typeKey || '').toLowerCase();
+  if (key.includes('running')) return 'Run';
+  if (key.includes('hiking')) return 'Hike';
+  if (key.includes('walking')) return 'Walk';
+  if (key.includes('cycling') || key.includes('biking')) return 'Ride';
+  if (key.includes('strength')) return 'WeightTraining';
+  if (key.includes('hiit') || key.includes('cardio') || key.includes('fitness')) return 'Workout';
+  return 'Workout';
+}
+
+function toStravaSummary(a: IActivity): StravaActivitySummary {
+  const distanceKm = (a.distance || 0) / 1000;
+  const moveSec = a.movingDuration || a.duration || 0;
+  const durationMinutes = Math.round(moveSec / 60);
+  const avgPace = distanceKm > 0 ? moveSec / 60 / distanceKm : null;
+
+  return {
+    activityId: Number(a.activityId),
+    activityName: a.activityName || 'Activity',
+    sportType: garminTypeToStravaSportType(a.activityType?.typeKey || ''),
+    startTimeLocal: a.startTimeLocal,
+    distanceKm: Math.round(distanceKm * 100) / 100,
+    durationMinutes,
+    calories: Math.round(a.calories || 0),
+    averageHR: Math.round(a.averageHR || 0),
+    maxHR: Math.round(a.maxHR || 0),
+    elevationGain: Math.round(a.elevationGain || 0),
+    averagePaceMinPerKm: avgPace ? Math.round(avgPace * 100) / 100 : null,
+    locationName: a.locationName || '',
+  };
+}
+
+/**
+ * daily-sync용: 해당 달력 날짜(워치 로컬 시간 = KST)의 모든 종류 활동을
+ * StravaActivitySummary 호환 형태로 반환 (최신순).
+ * Strava Developer Program 유료화(2026-06-30) 이후 Strava 대신 사용.
+ */
+export async function fetchDayActivitySummaries(
+  dateStr: string
+): Promise<StravaActivitySummary[]> {
+  const client = await createGarminClient();
+  const activities = await client.getActivities(0, 100);
+
+  const matched = activities.filter(
+    (a) => (a.startTimeLocal || '').slice(0, 10) === dateStr
+  );
+  matched.sort((a, b) =>
+    (b.startTimeLocal || '').localeCompare(a.startTimeLocal || '')
+  );
+  return matched.map(toStravaSummary);
 }
 
 /**

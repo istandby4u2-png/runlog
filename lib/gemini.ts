@@ -138,3 +138,76 @@ export async function calculateCalories(mealDescription: string): Promise<number
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// 사진 자동 선별 (iPhone 단축어 → auto-select 엔드포인트)
+// ---------------------------------------------------------------------------
+
+export type NaturePhotoSelection = {
+  /** 선택된 사진의 0-기반 인덱스 */
+  index: number;
+  /** 선택 이유 (로그·응답 표시용, 한 문장) */
+  reason: string;
+};
+
+/**
+ * 여러 장의 사진 중 러닝 기록 카드 배경으로 좋은 «자연 사진» 1장을 Gemini Vision으로 선별.
+ * 실패 시 null (호출부에서 첫 번째 사진 폴백).
+ */
+export async function selectNaturePhoto(
+  images: { buffer: Buffer; mimeType: string }[]
+): Promise<NaturePhotoSelection | null> {
+  if (!genAI || images.length === 0) return null;
+  if (images.length === 1) return { index: 0, reason: '사진이 1장뿐입니다.' };
+
+  // -latest 별칭은 Google이 항상 현행 모델로 연결 (고정 버전명은 폐기되면 404)
+  const modelOptions = [
+    'gemini-flash-latest',
+    'gemini-flash-lite-latest',
+    'gemini-3-flash-preview',
+  ];
+
+  const prompt = `다음 ${images.length}장의 사진 중에서 러닝 기록 SNS 카드의 배경으로 쓸 «자연 사진» 1장을 골라주세요.
+
+선정 기준 (우선순위 순):
+1. 자연 풍경이 주제인 사진: 하늘, 산, 바다, 강, 호수, 나무, 공원, 노을, 일출 등
+2. 화면이 시원하고 배경으로 쓰기 좋은 구도 (텍스트를 얹어도 잘 보이는 사진)
+3. 인물이 주제인 사진, 음식, 실내, 스크린샷, 문서 사진은 제외
+4. 자연 사진이 없으면 야외에서 찍은 사진 중 가장 배경에 적합한 것
+
+반드시 아래 JSON 형식으로만 답하세요. 다른 텍스트는 포함하지 마세요.
+{"index": <0부터 시작하는 사진 번호>, "reason": "<선택 이유 한 문장>"}`;
+
+  for (const modelName of modelOptions) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const parts = [
+        { text: prompt },
+        ...images.map((img) => ({
+          inlineData: {
+            data: img.buffer.toString('base64'),
+            mimeType: img.mimeType,
+          },
+        })),
+      ];
+      const result = await model.generateContent(parts);
+      const text = result.response.text().trim();
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) continue;
+      const parsed = JSON.parse(jsonMatch[0]) as { index?: number; reason?: string };
+      if (
+        typeof parsed.index === 'number' &&
+        parsed.index >= 0 &&
+        parsed.index < images.length
+      ) {
+        return {
+          index: Math.floor(parsed.index),
+          reason: typeof parsed.reason === 'string' ? parsed.reason : '',
+        };
+      }
+    } catch (err) {
+      console.warn(`selectNaturePhoto: ${modelName} 실패`, err instanceof Error ? err.message : err);
+    }
+  }
+  return null;
+}

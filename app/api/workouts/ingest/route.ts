@@ -38,10 +38,35 @@ function appleTypeToSportType(raw: string): string {
 function toNumber(v: number | string | undefined): number {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   if (typeof v === 'string') {
-    const n = parseFloat(v.replace(/[^\d.-]/g, ''));
+    const n = parseFloat(v.replace(/,/g, '').replace(/[^\d.-]/g, ''));
     if (Number.isFinite(n)) return n;
   }
   return 0;
+}
+
+/**
+ * 단축어가 보내는 다양한 지속 시간 표기를 분으로 변환:
+ * "58", 58, "58분", "1시간 5분", "1:05:24"(h:m:s), "58:24"(m:s), "3480초"
+ */
+function parseDurationMinutes(v: number | string | undefined): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return Math.round(v);
+  if (typeof v !== 'string') return 0;
+  const s = v.trim();
+
+  const colon = s.match(/^(\d+):(\d{1,2})(?::(\d{1,2}))?$/);
+  if (colon) {
+    const [, a, b, c] = colon;
+    return c !== undefined
+      ? Math.round(parseInt(a) * 60 + parseInt(b) + parseInt(c) / 60)
+      : Math.round(parseInt(a) + parseInt(b) / 60);
+  }
+
+  const hm = s.match(/(\d+)\s*시간(?:\s*(\d+)\s*분)?/);
+  if (hm) return parseInt(hm[1]) * 60 + (hm[2] ? parseInt(hm[2]) : 0);
+
+  if (/초|sec/i.test(s)) return Math.round(toNumber(s) / 60);
+  if (/시간|hour|hr/i.test(s)) return Math.round(toNumber(s) * 60);
+  return Math.round(toNumber(s));
 }
 
 /** 시작 시각 → KST 달력 날짜 (단축어의 로컬 ISO는 그대로, UTC 표기는 KST 변환) */
@@ -89,19 +114,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: { workouts?: IncomingWorkout[] };
+  let body: { workouts?: IncomingWorkout[] } & IncomingWorkout;
   try {
     body = await request.json();
   } catch {
     return NextResponse.json(
-      { error: 'JSON body가 필요합니다: { "workouts": [...] }' },
+      { error: 'JSON body가 필요합니다: 운동 1건 {start,type,...} 또는 { "workouts": [...] }' },
       { status: 400 }
     );
   }
-  const incoming = Array.isArray(body.workouts) ? body.workouts : [];
+  // 배열 형식과 단건 형식(단축어 반복 안에서 1건씩 전송) 모두 허용
+  const incoming = Array.isArray(body.workouts)
+    ? body.workouts
+    : body.start
+      ? [body]
+      : [];
   if (incoming.length === 0) {
     return NextResponse.json(
-      { error: 'workouts 배열이 비어 있습니다.' },
+      { error: 'workouts 배열 또는 start 필드가 필요합니다.' },
       { status: 400 }
     );
   }
@@ -117,7 +147,7 @@ export async function POST(request: NextRequest) {
       continue;
     }
     const distanceKm = Math.round(toNumber(w.distanceKm) * 100) / 100;
-    const durationMinutes = Math.round(toNumber(w.durationMinutes));
+    const durationMinutes = parseDurationMinutes(w.durationMinutes);
     const sportType = appleTypeToSportType(w.type || w.name || '');
     const summary: StravaActivitySummary = {
       activityId: new Date(start).getTime(),
@@ -143,9 +173,8 @@ export async function POST(request: NextRequest) {
 
   const saved: Record<string, number> = {};
   for (const [dateStr, list] of byDate) {
-    list.sort((a, b) => (b.startTimeLocal || '').localeCompare(a.startTimeLocal || ''));
-    await saveIngestedWorkouts(userId, dateStr, list);
-    saved[dateStr] = list.length;
+    const merged = await saveIngestedWorkouts(userId, dateStr, list);
+    saved[dateStr] = merged.length;
   }
 
   return NextResponse.json({

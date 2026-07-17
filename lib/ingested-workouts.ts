@@ -26,15 +26,27 @@ function pathFor(userId: number, dateStr: string): string {
   return `workouts/${userId}/${dateStr}.json`;
 }
 
-/** 해당 날짜의 운동 목록 전체를 저장 (같은 날짜 재전송 시 덮어씀 → 멱등). */
+/**
+ * 해당 날짜에 운동을 병합 저장. activityId(시작 시각 epoch) 기준으로 대체하므로
+ * 단축어가 1건씩 여러 번 보내도, 같은 날짜를 재전송해도 중복이 생기지 않는다.
+ */
 export async function saveIngestedWorkouts(
   userId: number,
   dateStr: string,
   workouts: StravaActivitySummary[]
-): Promise<void> {
+): Promise<StravaActivitySummary[]> {
   if (!supabaseAdmin) throw new Error('Supabase admin client not initialized');
   await ensureBucket();
-  const body = Buffer.from(JSON.stringify(workouts, null, 2));
+
+  const existing = await loadIngestedWorkouts(userId, dateStr);
+  const byId = new Map<number, StravaActivitySummary>();
+  for (const w of existing) byId.set(w.activityId, w);
+  for (const w of workouts) byId.set(w.activityId, w);
+  const merged = [...byId.values()].sort((a, b) =>
+    (b.startTimeLocal || '').localeCompare(a.startTimeLocal || '')
+  );
+
+  const body = Buffer.from(JSON.stringify(merged, null, 2));
   const { error } = await supabaseAdmin.storage
     .from(BUCKET)
     .upload(pathFor(userId, dateStr), body, {
@@ -44,6 +56,7 @@ export async function saveIngestedWorkouts(
   if (error) {
     throw new Error(`ingested workouts 저장 실패: ${error.message}`);
   }
+  return merged;
 }
 
 /** 해당 날짜에 단축어로 전송된 운동 목록 (없으면 빈 배열). */

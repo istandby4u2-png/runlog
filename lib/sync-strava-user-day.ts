@@ -12,6 +12,7 @@ import {
   stravaSyncRecordTitle,
 } from '@/lib/strava-api';
 import { fetchDayActivitySummaries } from '@/lib/garmin-api';
+import { loadIngestedWorkouts } from '@/lib/ingested-workouts';
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { publishPublicImageToInstagramForUser } from '@/lib/instagram-user-publish';
 import { runningRecords, userTokens, pickedPhotos } from '@/lib/db-supabase';
@@ -83,6 +84,19 @@ export async function syncStravaDayForUser(
       igMediaId: null,
       log,
     };
+  }
+
+  // Apple Watch(2026-07-09~): 단축어로 전송된 운동 합류
+  try {
+    const ingested = await loadIngestedWorkouts(userId, dateStr);
+    if (ingested.length > 0) {
+      activities = [...activities, ...ingested].sort((a, b) =>
+        (b.startTimeLocal || '').localeCompare(a.startTimeLocal || '')
+      );
+      log.push(`Apple(단축어): ${ingested.length}건 합류`);
+    }
+  } catch (err: unknown) {
+    log.push(`Apple(단축어) error: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   if (activities.length === 0) {

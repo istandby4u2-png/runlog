@@ -8,6 +8,7 @@ import {
   stravaSyncRecordTitle,
 } from '@/lib/strava-api';
 import { fetchDayActivitySummaries } from '@/lib/garmin-api';
+import { loadIngestedWorkouts } from '@/lib/ingested-workouts';
 import {
   publishImagePost,
   refreshLongLivedToken,
@@ -88,6 +89,19 @@ export async function GET(request: NextRequest) {
     }
   } catch (err: unknown) {
     log.push(`Garmin error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Apple Watch(2026-07-09~): iPhone 단축어가 /api/workouts/ingest로 보낸 운동 합류
+  try {
+    const ingested = await loadIngestedWorkouts(syncUserId, todayStr);
+    if (ingested.length > 0) {
+      activities = [...activities, ...ingested].sort((a, b) =>
+        (b.startTimeLocal || '').localeCompare(a.startTimeLocal || '')
+      );
+      log.push(`Apple(단축어): ${ingested.length}건 합류`);
+    }
+  } catch (err: unknown) {
+    log.push(`Apple(단축어) error: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   if (activities.length === 0) {

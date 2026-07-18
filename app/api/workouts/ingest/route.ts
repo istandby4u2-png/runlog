@@ -127,13 +127,20 @@ function haeToIncoming(w: HaeWorkout): IncomingWorkout {
   }
 
   const energy = haeQtyValue(w.activeEnergy) ?? haeQtyValue(w.activeEnergyBurned);
+  let calories: number | undefined;
+  if (energy) {
+    // HAE는 에너지를 kJ로 보내는 경우가 있음 (2096kJ = 500kcal)
+    calories = energy.units.includes('kj')
+      ? Math.round(energy.qty / 4.184)
+      : Math.round(energy.qty);
+  }
 
   return {
     start: w.start,
     type: w.name,
     distanceKm,
     durationMinutes,
-    calories: energy?.qty,
+    calories,
   };
 }
 

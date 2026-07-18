@@ -41,7 +41,23 @@ export async function saveIngestedWorkouts(
   const existing = await loadIngestedWorkouts(userId, dateStr);
   const byId = new Map<number, StravaActivitySummary>();
   for (const w of existing) byId.set(w.activityId, w);
-  for (const w of workouts) byId.set(w.activityId, w);
+
+  for (const w of workouts) {
+    // 같은 운동이 다른 경로(이미지 공유 vs HAE)로 들어온 경우 대체:
+    // 종목 동일 + 시간 ±3분 + 거리 ±0.5km면 같은 운동으로 판단
+    for (const [id, ex] of byId) {
+      if (
+        id !== w.activityId &&
+        ex.sportType === w.sportType &&
+        Math.abs(ex.durationMinutes - w.durationMinutes) <= 3 &&
+        Math.abs(ex.distanceKm - w.distanceKm) <= 0.5
+      ) {
+        byId.delete(id);
+      }
+    }
+    byId.set(w.activityId, w);
+  }
+
   const merged = [...byId.values()].sort((a, b) =>
     (b.startTimeLocal || '').localeCompare(a.startTimeLocal || '')
   );

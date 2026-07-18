@@ -247,16 +247,31 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (Array.isArray(body.data?.workouts)) {
-      incoming = body.data.workouts.map(haeToIncoming);
-    } else {
-      // 배열 형식과 단건 형식(단축어 반복 안에서 1건씩 전송) 모두 허용
-      incoming = Array.isArray(body.workouts)
-        ? body.workouts
-        : body.start
-          ? [body]
-          : [];
+    // 허용 형태: {data:{workouts:[...]}} (HAE) / {workouts:[...]} / [ ... ] / 단건 객체
+    let rawItems: unknown[] = [];
+    if (Array.isArray(body)) {
+      rawItems = body;
+    } else if (Array.isArray(body.data?.workouts)) {
+      rawItems = body.data.workouts;
+    } else if (Array.isArray(body.workouts)) {
+      rawItems = body.workouts;
+    } else if (body.start || body.name) {
+      rawItems = [body];
     }
+
+    incoming = rawItems
+      .filter((it): it is Record<string, unknown> => !!it && typeof it === 'object')
+      .map((it) => {
+        // HAE류 항목 판별: qty 객체 필드나 duration/name(HAE는 type 대신 name) 사용
+        const hae =
+          typeof it.distance === 'object' ||
+          typeof it.activeEnergy === 'object' ||
+          typeof it.activeEnergyBurned === 'object' ||
+          ('duration' in it && !('durationMinutes' in it));
+        return hae
+          ? haeToIncoming(it as HaeWorkout)
+          : (it as IncomingWorkout);
+      });
   }
   if (incoming.length === 0) {
     return NextResponse.json(

@@ -459,28 +459,45 @@ export const runningRecords = {
       return [];
     }
 
-    const recordsWithStats = await Promise.all(
-      (data || []).map(async (record) => {
-        const [likesCount, commentsCount, isLiked] = await Promise.all([
-          this.getLikesCount(record.id),
-          this.getCommentsCount(record.id),
-          userId ? this.isLiked(record.id, userId) : false
-        ]);
+    // 기록별 개별 조회(N+1) 대신 좋아요·댓글을 3번의 쿼리로 일괄 집계
+    const ids = (data || []).map((r) => r.id);
+    const likesByRecord = new Map<number, number>();
+    const commentsByRecord = new Map<number, number>();
+    const likedSet = new Set<number>();
 
-          return {
-            ...record,
-            username: (record.users as any)?.username,
-            user_profile_image_url: (record.users as any)?.profile_image_url || null,
-            course_title: (record.courses as any)?.title,
-            likes_count: likesCount,
-            comments_count: commentsCount,
-            is_liked: isLiked,
-            is_owner: userId ? record.user_id === userId : false
-          };
-      })
-    );
+    if (ids.length > 0) {
+      const [likesRes, commentsRes, myLikesRes] = await Promise.all([
+        supabaseAdmin.from('likes').select('record_id').in('record_id', ids),
+        supabaseAdmin.from('comments').select('record_id').in('record_id', ids),
+        userId
+          ? supabaseAdmin
+              .from('likes')
+              .select('record_id')
+              .eq('user_id', userId)
+              .in('record_id', ids)
+          : Promise.resolve({ data: [] as { record_id: number }[] }),
+      ]);
+      for (const row of likesRes.data || []) {
+        likesByRecord.set(row.record_id, (likesByRecord.get(row.record_id) || 0) + 1);
+      }
+      for (const row of commentsRes.data || []) {
+        commentsByRecord.set(row.record_id, (commentsByRecord.get(row.record_id) || 0) + 1);
+      }
+      for (const row of myLikesRes.data || []) {
+        likedSet.add(row.record_id);
+      }
+    }
 
-    return recordsWithStats;
+    return (data || []).map((record) => ({
+      ...record,
+      username: (record.users as any)?.username,
+      user_profile_image_url: (record.users as any)?.profile_image_url || null,
+      course_title: (record.courses as any)?.title,
+      likes_count: likesByRecord.get(record.id) || 0,
+      comments_count: commentsByRecord.get(record.id) || 0,
+      is_liked: likedSet.has(record.id),
+      is_owner: userId ? record.user_id === userId : false
+    }));
   },
 
   async findById(id: number, userId?: number | null) {

@@ -4,6 +4,10 @@ import { getUserIdFromRequest } from '@/lib/auth';
 import { selectNaturePhoto } from '@/lib/gemini';
 import { uploadUserPhotoBufferWithFallback } from '@/lib/blob-storage';
 import { pickedPhotos } from '@/lib/db-supabase';
+import {
+  saveCandidatePhotos,
+  loadCandidatePhotos,
+} from '@/lib/photo-candidates';
 
 const AUTO_SYNC_USER_ID = parseInt(process.env.AUTO_SYNC_USER_ID || '0', 10);
 const CRON_SECRET = process.env.CRON_SECRET;
@@ -106,13 +110,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // 오늘의 후보에 누적 — 단축어가 한 장씩 여러 요청으로 보내도 전체 중에서 선별
+  let candidates: { buffer: Buffer; mimeType: string }[] = images;
+  try {
+    await saveCandidatePhotos(userId, dateStr, images);
+    const all = await loadCandidatePhotos(userId, dateStr);
+    if (all.length > images.length) candidates = all;
+  } catch (err) {
+    console.warn(
+      'auto-select: 후보 누적 실패, 이번 요청 사진만 사용',
+      err instanceof Error ? err.message : err
+    );
+  }
+
   // Gemini로 자연 사진 선별 (실패 시 첫 번째 사진 폴백)
   const selection = await selectNaturePhoto(
-    images.map(({ buffer, mimeType }) => ({ buffer, mimeType }))
+    candidates.map(({ buffer, mimeType }) => ({ buffer, mimeType }))
   );
   const index = selection?.index ?? 0;
   const reason = selection?.reason ?? 'AI 선별 실패 — 첫 번째 사진 사용';
-  const chosen = images[index];
+  const chosen = candidates[index];
 
   // EXIF 회전을 픽셀에 반영 (satori 카드 생성기는 EXIF orientation을 무시함)
   let normalized = chosen.buffer;
@@ -148,9 +165,9 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     date: dateStr,
-    candidates: images.length,
+    newPhotos: images.length,
+    candidates: candidates.length,
     selectedIndex: index,
-    selectedName: chosen.name,
     reason,
     blobUrl: uploaded.url,
     skipped: skipped.length > 0 ? skipped : undefined,

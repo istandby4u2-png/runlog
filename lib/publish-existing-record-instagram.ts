@@ -1,13 +1,11 @@
 /**
- * 이미 RunLog에 있는 기록을 Strava·DB 데이터로 카드 생성 후 Instagram에 게시.
+ * 이미 RunLog에 있는 기록을 활동 데이터(Garmin·애플워치)·DB로 카드 생성 후 Instagram에 게시.
  */
 
 import type { StravaActivitySummary } from '@/lib/strava-api';
-import {
-  fetchActivitiesByDate,
-  buildStravaInstagramCaption,
-} from '@/lib/strava-api';
-import { ensureStravaAccessToken } from '@/lib/strava-token';
+import { buildStravaInstagramCaption } from '@/lib/strava-api';
+import { fetchDayActivitySummaries } from '@/lib/garmin-api';
+import { loadIngestedWorkouts } from '@/lib/ingested-workouts';
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { pickedPhotos, runningRecords } from '@/lib/db-supabase';
 import { uploadPublicJpegWithFallback } from '@/lib/blob-storage';
@@ -48,21 +46,26 @@ async function loadActivitiesForRecord(
     duration: number | null;
     burned_calories: number | null;
   }
-): Promise<{ activities: StravaActivitySummary[]; source: 'strava' | 'synthetic' }> {
-  const strava = await ensureStravaAccessToken(userId);
-  if (!strava.ok) {
-    return {
-      activities: syntheticActivitiesFromRecord(record),
-      source: 'synthetic',
-    };
+): Promise<{ activities: StravaActivitySummary[]; source: 'activity' | 'synthetic' }> {
+  let activities: StravaActivitySummary[] = [];
+  try {
+    activities = await fetchDayActivitySummaries(record.record_date);
+  } catch {
+    // Garmin 조회 실패는 무시 — 단축어 전송분·기록 수치로 대체
+  }
+  try {
+    const ingested = await loadIngestedWorkouts(userId, record.record_date);
+    if (ingested.length > 0) {
+      activities = [...activities, ...ingested].sort((a, b) =>
+        (b.startTimeLocal || '').localeCompare(a.startTimeLocal || '')
+      );
+    }
+  } catch {
+    // ignore
   }
 
-  const activities = await fetchActivitiesByDate(
-    strava.accessToken,
-    record.record_date
-  );
   if (activities.length > 0) {
-    return { activities, source: 'strava' };
+    return { activities, source: 'activity' };
   }
   return {
     activities: syntheticActivitiesFromRecord(record),
@@ -136,9 +139,9 @@ export async function publishExistingRecordToInstagram(
     burned_calories: record.burned_calories,
   });
   log.push(
-    source === 'strava'
-      ? `Strava 활동 ${activities.length}건으로 카드 생성`
-      : '해당일 Strava 활동 없음 — 저장된 기록 수치로 카드 생성'
+    source === 'activity'
+      ? `활동 데이터 ${activities.length}건으로 카드 생성 (Garmin·애플워치)`
+      : '해당일 활동 데이터 없음 — 저장된 기록 수치로 카드 생성'
   );
 
   let cardBuffer: Buffer;

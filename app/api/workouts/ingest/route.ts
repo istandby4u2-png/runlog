@@ -85,6 +85,58 @@ function startToKstDate(start: string): string | null {
   }).format(d);
 }
 
+/** Health Auto Export 앱의 운동 항목 (버전에 따라 필드가 조금씩 다름 — 관용적으로 처리) */
+type HaeQty = { qty?: number; units?: string } | number | undefined;
+type HaeWorkout = {
+  name?: string;
+  start?: string;
+  end?: string;
+  /** 초 또는 분 (버전에 따라 다름) */
+  duration?: number | string;
+  distance?: HaeQty;
+  activeEnergy?: HaeQty;
+  activeEnergyBurned?: HaeQty;
+};
+
+function haeQtyValue(q: HaeQty): { qty: number; units: string } | null {
+  if (typeof q === 'number') return { qty: q, units: '' };
+  if (q && typeof q === 'object' && typeof q.qty === 'number') {
+    return { qty: q.qty, units: (q.units || '').toLowerCase() };
+  }
+  return null;
+}
+
+function haeToIncoming(w: HaeWorkout): IncomingWorkout {
+  let distanceKm: number | undefined;
+  const dist = haeQtyValue(w.distance);
+  if (dist) {
+    distanceKm = dist.units === 'm' ? dist.qty / 1000 : dist.units === 'mi' ? dist.qty * 1.60934 : dist.qty;
+  }
+
+  let durationMinutes: number | undefined;
+  if (w.duration !== undefined) {
+    const n = typeof w.duration === 'number' ? w.duration : parseFloat(String(w.duration));
+    if (Number.isFinite(n)) {
+      // 600 초과면 초 단위로 간주 (10시간 넘는 운동은 없다고 가정)
+      durationMinutes = n > 600 ? Math.round(n / 60) : Math.round(n);
+    }
+  }
+  if (durationMinutes === undefined && w.start && w.end) {
+    const ms = new Date(w.end).getTime() - new Date(w.start).getTime();
+    if (Number.isFinite(ms) && ms > 0) durationMinutes = Math.round(ms / 60000);
+  }
+
+  const energy = haeQtyValue(w.activeEnergy) ?? haeQtyValue(w.activeEnergyBurned);
+
+  return {
+    start: w.start,
+    type: w.name,
+    distanceKm,
+    durationMinutes,
+    calories: energy?.qty,
+  };
+}
+
 /**
  * POST /api/workouts/ingest
  *
@@ -182,7 +234,11 @@ export async function POST(request: NextRequest) {
       );
     }
   } else {
-    let body: { workouts?: IncomingWorkout[] } & IncomingWorkout;
+    let body: {
+      workouts?: IncomingWorkout[];
+      /** Health Auto Export 앱 형식: { data: { workouts: [...] } } */
+      data?: { workouts?: HaeWorkout[] };
+    } & IncomingWorkout;
     try {
       body = await request.json();
     } catch {
@@ -191,12 +247,16 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    // 배열 형식과 단건 형식(단축어 반복 안에서 1건씩 전송) 모두 허용
-    incoming = Array.isArray(body.workouts)
-      ? body.workouts
-      : body.start
-        ? [body]
-        : [];
+    if (Array.isArray(body.data?.workouts)) {
+      incoming = body.data.workouts.map(haeToIncoming);
+    } else {
+      // 배열 형식과 단건 형식(단축어 반복 안에서 1건씩 전송) 모두 허용
+      incoming = Array.isArray(body.workouts)
+        ? body.workouts
+        : body.start
+          ? [body]
+          : [];
+    }
   }
   if (incoming.length === 0) {
     return NextResponse.json(

@@ -211,3 +211,76 @@ export async function selectNaturePhoto(
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// 운동 요약 이미지 판독 (피트니스 앱 공유 → ingest)
+// ---------------------------------------------------------------------------
+
+export type ExtractedWorkout = {
+  /** 운동 종류 원문 (예: 실외 달리기) */
+  type: string;
+  distanceKm: number | null;
+  durationMinutes: number | null;
+  calories: number | null;
+  /** 이미지에 날짜가 보이면 YYYY-MM-DD, 없으면 null */
+  date: string | null;
+};
+
+/**
+ * 피트니스 앱 운동 요약 이미지(공유 카드·스크린샷)에서 운동 정보를 추출.
+ * 이미지에 여러 운동이 보이면 모두 반환. 실패 시 null.
+ */
+export async function extractWorkoutsFromImage(image: {
+  buffer: Buffer;
+  mimeType: string;
+}): Promise<ExtractedWorkout[] | null> {
+  if (!genAI) return null;
+
+  const modelOptions = [
+    'gemini-flash-latest',
+    'gemini-3-flash-preview',
+    'gemini-flash-lite-latest',
+  ];
+
+  const prompt = `이 이미지는 Apple 피트니스(또는 유사 앱)의 운동 기록 화면입니다.
+보이는 운동 기록을 모두 추출해 JSON으로 답하세요.
+
+규칙:
+- distanceKm: 거리(km 단위 숫자). 수영이 m 표기면 km로 변환. 없으면 null
+- durationMinutes: 운동 시간(분 단위 정수). "1:05:32"는 66, "34:12"는 34. 없으면 null
+- calories: 활성 칼로리(kcal 정수). 없으면 null
+- date: 화면에 날짜가 보이면 "YYYY-MM-DD" (연도가 없으면 2026년으로 가정). 없으면 null
+- type: 화면에 표시된 운동 이름 그대로 (예: "실외 달리기")
+- 요약/합계 줄은 제외하고 개별 운동만
+
+JSON만 출력:
+{"workouts":[{"type":"실외 달리기","distanceKm":12.02,"durationMinutes":66,"calories":610,"date":"2026-07-17"}]}`;
+
+  for (const modelName of modelOptions) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent([
+        { text: prompt },
+        {
+          inlineData: {
+            data: image.buffer.toString('base64'),
+            mimeType: image.mimeType,
+          },
+        },
+      ]);
+      const text = result.response.text().trim();
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) continue;
+      const parsed = JSON.parse(jsonMatch[0]) as { workouts?: ExtractedWorkout[] };
+      if (Array.isArray(parsed.workouts)) {
+        return parsed.workouts.filter((w) => w && typeof w.type === 'string');
+      }
+    } catch (err) {
+      console.warn(
+        `extractWorkoutsFromImage: ${modelName} 실패`,
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+  return null;
+}

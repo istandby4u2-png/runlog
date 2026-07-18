@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserIdFromRequest } from '@/lib/auth';
 import type { StravaActivitySummary } from '@/lib/strava-api';
 import { saveIngestedWorkouts } from '@/lib/ingested-workouts';
+import { extractWorkoutsFromImage, type ExtractedWorkout } from '@/lib/gemini';
 
 const AUTO_SYNC_USER_ID = parseInt(process.env.AUTO_SYNC_USER_ID || '0', 10);
 const CRON_SECRET = process.env.CRON_SECRET;
@@ -114,21 +115,89 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: { workouts?: IncomingWorkout[] } & IncomingWorkout;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { error: 'JSON body가 필요합니다: 운동 1건 {start,type,...} 또는 { "workouts": [...] }' },
-      { status: 400 }
-    );
+  let incoming: IncomingWorkout[] = [];
+  let parsedFromImage: ExtractedWorkout[] | undefined;
+
+  const contentType = request.headers.get('content-type') || '';
+  if (contentType.includes('multipart/form-data')) {
+    // 피트니스 앱 공유 이미지(운동 요약 카드·스크린샷) → Gemini Vision 판독
+    let form: FormData;
+    try {
+      form = await request.formData();
+    } catch {
+      return NextResponse.json(
+        { error: 'multipart 파싱 실패' },
+        { status: 400 }
+      );
+    }
+    const dateField = form.get('date');
+    const defaultDate =
+      typeof dateField === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateField)
+        ? dateField
+        : new Date(
+            new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })
+          ).toISOString().slice(0, 10);
+
+    const files = [...form.entries()]
+      .map(([, v]) => v)
+      .filter((v): v is File => v instanceof File && v.type.startsWith('image/'));
+    if (files.length === 0) {
+      return NextResponse.json(
+        { error: '운동 요약 이미지가 없습니다. 피트니스 앱 공유 이미지를 첨부해 주세요.' },
+        { status: 400 }
+      );
+    }
+
+    parsedFromImage = [];
+    for (const file of files.slice(0, 5)) {
+      const extracted = await extractWorkoutsFromImage({
+        buffer: Buffer.from(await file.arrayBuffer()),
+        mimeType: file.type,
+      });
+      if (!extracted || extracted.length === 0) continue;
+      parsedFromImage.push(...extracted);
+      for (const w of extracted) {
+        const date =
+          w.date && /^\d{4}-\d{2}-\d{2}$/.test(w.date) ? w.date : defaultDate;
+        // 같은 운동 재공유는 같은 시각(=같은 id)이 되도록 내용 기반 시각 생성
+        const key = `${w.type}|${w.distanceKm}|${w.durationMinutes}|${w.calories}`;
+        let hash = 0;
+        for (const ch of key) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+        const minutes = hash % 600; // 10:00 ~ 19:59 사이
+        const hh = String(10 + Math.floor(minutes / 60)).padStart(2, '0');
+        const mm = String(minutes % 60).padStart(2, '0');
+        incoming.push({
+          start: `${date} ${hh}:${mm}:00`,
+          type: w.type,
+          distanceKm: w.distanceKm ?? undefined,
+          durationMinutes: w.durationMinutes ?? undefined,
+          calories: w.calories ?? undefined,
+        });
+      }
+    }
+    if (incoming.length === 0) {
+      return NextResponse.json(
+        { error: '이미지에서 운동 정보를 읽지 못했습니다. 운동 요약이 잘 보이는 이미지인지 확인해 주세요.' },
+        { status: 422 }
+      );
+    }
+  } else {
+    let body: { workouts?: IncomingWorkout[] } & IncomingWorkout;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: 'JSON body가 필요합니다: 운동 1건 {start,type,...} 또는 { "workouts": [...] }' },
+        { status: 400 }
+      );
+    }
+    // 배열 형식과 단건 형식(단축어 반복 안에서 1건씩 전송) 모두 허용
+    incoming = Array.isArray(body.workouts)
+      ? body.workouts
+      : body.start
+        ? [body]
+        : [];
   }
-  // 배열 형식과 단건 형식(단축어 반복 안에서 1건씩 전송) 모두 허용
-  const incoming = Array.isArray(body.workouts)
-    ? body.workouts
-    : body.start
-      ? [body]
-      : [];
   if (incoming.length === 0) {
     return NextResponse.json(
       { error: 'workouts 배열 또는 start 필드가 필요합니다.' },
@@ -180,6 +249,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     saved,
+    parsed: parsedFromImage,
     skipped: skipped.length > 0 ? skipped : undefined,
   });
 }

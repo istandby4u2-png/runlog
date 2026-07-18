@@ -61,6 +61,37 @@ function appleTypeToSportType(raw: string): string {
   return 'Workout';
 }
 
+/**
+ * 표기 언어를 일본어로 통일 — Instagram 계정을 일본어로 운영 중이며,
+ * Garmin 시절 피드 표기(ラン·屋内バイク·筋トレ)와 일관성 유지.
+ * HAE·단축어·이미지 판독이 한국어/영어 이름을 보내도 캡션·기록은 일본어.
+ */
+function toJapaneseName(raw: string, sportType: string): string {
+  const t = (raw || '').toLowerCase();
+  const indoor =
+    t.includes('실내') || t.includes('indoor') || t.includes('屋内') || t.includes('室内');
+  switch (sportType) {
+    case 'Run':
+      return indoor ? 'ラン(屋内)' : 'ラン';
+    case 'Walk':
+      return 'ウォーク';
+    case 'Hike':
+      return 'ハイキング';
+    case 'Ride':
+      return indoor ? '屋内バイク' : 'ライド';
+    case 'Swim':
+      return t.includes('수영장') || t.includes('pool') || t.includes('プール')
+        ? 'プールスイミング'
+        : 'スイミング';
+    case 'StairStepper':
+      return 'ステッパー';
+    case 'WeightTraining':
+      return '筋トレ';
+    default:
+      return raw || 'ワークアウト';
+  }
+}
+
 function toNumber(v: number | string | undefined): number {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   if (typeof v === 'string') {
@@ -327,7 +358,7 @@ export async function POST(request: NextRequest) {
     const sportType = appleTypeToSportType(w.type || w.name || '');
     const summary: StravaActivitySummary = {
       activityId: new Date(start).getTime(),
-      activityName: (w.name || w.type || 'Workout').trim(),
+      activityName: toJapaneseName((w.name || w.type || '').trim(), sportType),
       sportType,
       startTimeLocal: start,
       distanceKm,

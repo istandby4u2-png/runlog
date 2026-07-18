@@ -30,6 +30,10 @@ const STEM_FILL_REPLACEMENTS: Record<string, Record<string, string>> = {
     '#DD2E44': '#000000',
     '#EA596E': '#000000',
   },
+  // 🏊🏻‍♀️ 수영 — 수영모·수영복 레드만 검정 (물 #55ACEE·살색 유지)
+  '1f3ca-1f3fb-200d-2640-fe0f': {
+    '#DD2E44': '#000000',
+  },
 };
 
 export function recolorTwemojiSvgString(stem: string, svg: string): string {

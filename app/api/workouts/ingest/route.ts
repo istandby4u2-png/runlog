@@ -24,14 +24,33 @@ type IncomingWorkout = {
 };
 
 /** Apple Health 운동 종류(한/영) → Strava sport_type 호환 문자열 */
+/** Apple Health 운동 종류(한/영/일) → Strava sport_type 호환 문자열 */
 function appleTypeToSportType(raw: string): string {
   const t = (raw || '').toLowerCase();
-  if (t.includes('run') || t.includes('달리기') || t.includes('러닝')) return 'Run';
-  if (t.includes('hik') || t.includes('등산') || t.includes('하이킹')) return 'Hike';
-  if (t.includes('walk') || t.includes('걷기') || t.includes('워킹')) return 'Walk';
-  if (t.includes('cycl') || t.includes('bike') || t.includes('자전거') || t.includes('사이클'))
+  if (
+    t.includes('run') || t.includes('달리기') || t.includes('러닝') ||
+    t.includes('ラン') || t.includes('走')
+  )
+    return 'Run';
+  if (
+    t.includes('hik') || t.includes('등산') || t.includes('하이킹') ||
+    t.includes('ハイキング') || t.includes('登山')
+  )
+    return 'Hike';
+  if (
+    t.includes('walk') || t.includes('걷기') || t.includes('워킹') ||
+    t.includes('ウォーク') || t.includes('ウォーキング') || t.includes('歩')
+  )
+    return 'Walk';
+  if (
+    t.includes('cycl') || t.includes('bike') || t.includes('자전거') || t.includes('사이클') ||
+    t.includes('サイクリング') || t.includes('バイク') || t.includes('自転車')
+  )
     return 'Ride';
-  if (t.includes('strength') || t.includes('근력') || t.includes('웨이트') || t.includes('헬스'))
+  if (
+    t.includes('strength') || t.includes('근력') || t.includes('웨이트') || t.includes('헬스') ||
+    t.includes('筋力') || t.includes('筋トレ') || t.includes('ストレングス')
+  )
     return 'WeightTraining';
   return 'Workout';
 }

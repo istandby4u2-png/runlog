@@ -37,7 +37,7 @@ function emojiToTwemojiSvgStem(emoji) {
 }
 
 /** lib/strava-api stravaSportTypeEmoji 반환 집합과 동기화 */
-const REQUIRED_EMOJIS = ['🚶🏻‍♀️', '🏃🏻‍♀️', '🚲', '💪'];
+const REQUIRED_EMOJIS = ['🚶🏻‍♀️', '🏃🏻‍♀️', '🚲', '💪', '🏊🏻‍♀️', '🦵'];
 
 const force = process.env.TWEMOJI_FORCE === '1';
 

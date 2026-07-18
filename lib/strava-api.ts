@@ -87,16 +87,22 @@ export function stravaSportTypeEmoji(sportType: string): string {
     'workout',
     'highintensityintervaltraining',
   ]);
+  const swim = new Set(['swim', 'swimming', 'lapswimming', 'openwaterswim']);
+  const stepper = new Set(['stairstepper', 'stepper', 'stairs', 'elliptical']);
 
-  const walkKo = new Set(['걷기', '하이킹', '등산']);
-  const runKo = new Set(['달리기', '러닝', '조깅', '트레일런']);
-  const bikeKo = new Set(['라이딩', '라이드', '자전거', '사이클', '싸이클']);
-  const strengthKo = new Set(['근력', '근육', '웨이트', '헬스', '크로스핏']);
+  const walkKo = new Set(['걷기', '하이킹', '등산', 'ウォーキング', 'ウォーク']);
+  const runKo = new Set(['달리기', '러닝', '조깅', '트레일런', 'ランニング', 'ラン']);
+  const bikeKo = new Set(['라이딩', '라이드', '자전거', '사이클', '싸이클', 'サイクリング', 'バイク']);
+  const strengthKo = new Set(['근력', '근육', '웨이트', '헬스', '크로스핏', '筋力', '筋トレ']);
+  const swimKo = new Set(['수영', '水泳', 'スイミング']);
+  const stepperKo = new Set(['스테퍼', '스텝퍼', '계단', 'ステッパー']);
 
   if (walk.has(key) || walkKo.has(raw)) return '🚶🏻‍♀️';
   if (run.has(key) || runKo.has(raw)) return '🏃🏻‍♀️';
   if (bike.has(key) || bikeKo.has(raw)) return '🚲';
   if (strength.has(key) || strengthKo.has(raw)) return '💪';
+  if (swim.has(key) || swimKo.has(raw)) return '🏊🏻‍♀️';
+  if (stepper.has(key) || stepperKo.has(raw)) return '🦵';
   return '🏃🏻‍♀️';
 }
 
@@ -148,6 +154,7 @@ export async function exchangeCodeForTokens(code: string) {
       client_secret: STRAVA_CLIENT_SECRET,
       code,
       grant_type: 'authorization_code',
+      redirect_uri: STRAVA_REDIRECT_URI,
     }),
   });
   if (!res.ok) {
@@ -189,11 +196,34 @@ export function isStravaRefreshTokenInvalidError(
 function isStravaRefreshInvalidResponse(status: number, text: string): boolean {
   if (status === 401) return true;
   if (status !== 400) return false;
+
+  try {
+    const body = JSON.parse(text) as {
+      message?: string;
+      errors?: Array<{ resource?: string; field?: string; code?: string }>;
+    };
+    if (
+      body.errors?.some(
+        (e) =>
+          e.field === 'refresh_token' &&
+          (e.code === 'invalid' || e.code === 'expired')
+      )
+    ) {
+      return true;
+    }
+    const msg = (body.message || '').toLowerCase();
+    if (msg.includes('authorization error') && msg.includes('refresh')) {
+      return true;
+    }
+  } catch {
+    // fall through to plain-text heuristics
+  }
+
   const lower = text.toLowerCase();
   return (
-    lower.includes('refresh_token') ||
-    lower.includes('invalid') ||
-    lower.includes('authorization error')
+    lower.includes('invalid refresh_token') ||
+    lower.includes('invalid_grant') ||
+    lower.includes('refresh token is invalid')
   );
 }
 
@@ -374,6 +404,36 @@ export function formatDurationInstagramEn(minutes: number): string {
 const INSTAGRAM_CAPTION_HASHTAGS =
   '#runlog #running  #ランニング #ルーティン #러닝 #루틴';
 
+/** 종목별 해시태그 — 그날 활동에 맞춰 동적 구성 (일/한/영 병기) */
+const SPORT_HASHTAGS: Record<string, string[]> = {
+  Run: ['#running', '#ランニング', '#러닝'],
+  Ride: ['#cycling', '#サイクリング', '#사이클링'],
+  Walk: ['#walking', '#ウォーキング', '#걷기'],
+  Hike: ['#hiking', '#ハイキング', '#등산'],
+  Swim: ['#swimming', '#水泳', '#수영'],
+  StairStepper: ['#stepper', '#ステッパー', '#스테퍼'],
+  WeightTraining: ['#workout', '#筋トレ', '#근력운동'],
+};
+
+export function buildInstagramHashtags(
+  activities: StravaActivitySummary[]
+): string {
+  const tags: string[] = ['#runlog'];
+  const seen = new Set(tags);
+  for (const a of activities) {
+    for (const t of SPORT_HASHTAGS[a.sportType] || []) {
+      if (!seen.has(t)) {
+        seen.add(t);
+        tags.push(t);
+      }
+    }
+  }
+  for (const t of ['#ルーティン', '#루틴']) {
+    if (!seen.has(t)) tags.push(t);
+  }
+  return tags.join(' ');
+}
+
 /** `YYYY-MM-DD` (KST 기준으로 ISO/타임스탬프 보정) — 카드·캡션 공통 */
 export function formatInstagramCalendarDate(dateStr: string): string {
   const s = (dateStr || '').trim();
@@ -441,6 +501,7 @@ export function buildStravaInstagramCaption(
   if (activities.length === 0) {
     return `${cal}\n\n${INSTAGRAM_CAPTION_HASHTAGS}`;
   }
+  const hashtags = buildInstagramHashtags(activities);
 
   const blocks: string[] = [];
   activities.forEach((a) => {
@@ -454,7 +515,7 @@ export function buildStravaInstagramCaption(
   });
 
   const body = blocks.join('\n\n');
-  return `${body}\n\n${cal}\n\n${INSTAGRAM_CAPTION_HASHTAGS}`;
+  return `${body}\n\n${cal}\n\n${hashtags}`;
 }
 
 /** DB title: 단일은 활동명, 복수는 날짜·건수. */

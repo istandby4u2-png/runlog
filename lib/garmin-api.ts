@@ -83,6 +83,8 @@ function garminTypeToStravaSportType(typeKey: string): string {
   if (key.includes('walking')) return 'Walk';
   if (key.includes('cycling') || key.includes('biking')) return 'Ride';
   if (key.includes('strength')) return 'WeightTraining';
+  if (key.includes('swim')) return 'Swim';
+  if (key.includes('stepper') || key.includes('stair')) return 'StairStepper';
   if (key.includes('hiit') || key.includes('cardio') || key.includes('fitness')) return 'Workout';
   return 'Workout';
 }

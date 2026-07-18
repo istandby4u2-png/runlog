@@ -23,7 +23,6 @@ type IncomingWorkout = {
   averageHR?: number | string;
 };
 
-/** Apple Health 운동 종류(한/영) → Strava sport_type 호환 문자열 */
 /** Apple Health 운동 종류(한/영/일) → Strava sport_type 호환 문자열 */
 function appleTypeToSportType(raw: string): string {
   const t = (raw || '').toLowerCase();
@@ -52,6 +51,13 @@ function appleTypeToSportType(raw: string): string {
     t.includes('筋力') || t.includes('筋トレ') || t.includes('ストレングス')
   )
     return 'WeightTraining';
+  if (t.includes('swim') || t.includes('수영') || t.includes('水泳') || t.includes('スイミング'))
+    return 'Swim';
+  if (
+    t.includes('stepper') || t.includes('stair') || t.includes('스테퍼') || t.includes('스텝퍼') ||
+    t.includes('계단') || t.includes('ステッパー')
+  )
+    return 'StairStepper';
   return 'Workout';
 }
 

@@ -20,7 +20,8 @@ import { uploadImage } from '@/lib/blob-storage';
 const AUTO_SYNC_USER_ID = parseInt(process.env.AUTO_SYNC_USER_ID || '0', 10);
 const CRON_SECRET = process.env.CRON_SECRET;
 
-export const maxDuration = 60;
+/** Instagram 게시(컨테이너 폴링 ~45s+)까지 포함 — 60초면 IG 미게시가 잦음 */
+export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
   const sessionUserId = getUserIdFromRequest();

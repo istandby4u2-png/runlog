@@ -14,6 +14,9 @@
     },
     "app/api/cron/batch-sync/day/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/cron/daily-sync/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [

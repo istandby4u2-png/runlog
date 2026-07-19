@@ -69,6 +69,22 @@ export async function GET(request: NextRequest) {
         ? `동기화 사용자: 로그인 계정 (user_id=${syncUserId})`
         : `동기화 사용자: 환경변수 기본 (AUTO_SYNC_USER_ID=${syncUserId})`
   );
+
+  // 중복 실행 방지: 크론 재시도·수동 중복 실행으로 같은 날짜 기록이 2개 생기는 사고 방지
+  const existingId = await runningRecords.findIdByUserAndRecordDate(
+    syncUserId,
+    todayStr
+  );
+  if (existingId != null) {
+    log.push(`건너뜀: ${todayStr} 기록이 이미 있음 (id=${existingId})`);
+    return NextResponse.json({
+      ok: true,
+      synced: false,
+      skipped: true,
+      recordId: existingId,
+      log,
+    });
+  }
   if (dateParam && todayStr === dateParam) {
     log.push(`날짜 지정: ${todayStr} (KST 오늘: ${kstToday})`);
   }

@@ -11,6 +11,26 @@ import { pickedPhotos, runningRecords } from '@/lib/db-supabase';
 import { uploadPublicJpegWithFallback } from '@/lib/blob-storage';
 import { publishPublicImageToInstagramForUser } from '@/lib/instagram-user-publish';
 
+/** 기록 제목(한/영/일)에서 종목 추론 — Garmin·단축어 데이터가 없어 기록 수치로 카드 만들 때 */
+function inferSportTypeFromName(raw: string): string {
+  const t = (raw || '').toLowerCase();
+  if (t.includes('swim') || t.includes('수영') || t.includes('水泳') || t.includes('スイミング'))
+    return 'Swim';
+  if (t.includes('stepper') || t.includes('stair') || t.includes('스테퍼') || t.includes('ステッパー'))
+    return 'StairStepper';
+  if (t.includes('cycl') || t.includes('bike') || t.includes('자전거') || t.includes('사이클') ||
+      t.includes('サイクリング') || t.includes('バイク') || t.includes('自転車'))
+    return 'Ride';
+  if (t.includes('walk') || t.includes('걷기') || t.includes('ウォーク') || t.includes('歩'))
+    return 'Walk';
+  if (t.includes('hik') || t.includes('등산') || t.includes('ハイキング') || t.includes('登山'))
+    return 'Hike';
+  if (t.includes('strength') || t.includes('근력') || t.includes('웨이트') ||
+      t.includes('筋力') || t.includes('筋トレ'))
+    return 'WeightTraining';
+  return 'Run';
+}
+
 function syntheticActivitiesFromRecord(record: {
   title: string | null;
   record_date: string;
@@ -23,7 +43,7 @@ function syntheticActivitiesFromRecord(record: {
     {
       activityId: 0,
       activityName: title,
-      sportType: 'Run',
+      sportType: inferSportTypeFromName(title),
       startTimeLocal: `${record.record_date}T12:00:00`,
       distanceKm: Number(record.distance ?? 0) || 0,
       durationMinutes: Number(record.duration ?? 0) || 0,

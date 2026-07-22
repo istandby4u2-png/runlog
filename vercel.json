@@ -21,12 +21,12 @@
   },
   "crons": [
     {
-      "path": "/api/cron/daily-sync",
+      "path": "/api/cron/daily-sync?requirePhoto=1",
       "schedule": "0 12 * * *"
     },
     {
-      "path": "/api/cron/refresh-strava-token",
-      "schedule": "0 6 * * *"
+      "path": "/api/cron/daily-sync",
+      "schedule": "30 13 * * *"
     }
   ]
 }

@@ -55,6 +55,12 @@ export async function GET(request: NextRequest) {
   }
 
   const dateParam = request.nextUrl.searchParams.get('date');
+  /**
+   * requirePhoto=1: 아직 사진이 준비 안 됐으면 게시하지 않고 건너뜀.
+   * iOS 사진 자동화가 지연 실행(폰 잠금 시)되면 21:00 게시가 사진을 놓치므로,
+   * 이른 크론은 사진이 있을 때만 게시하고, 늦은 catch-up 크론이 최종 게시.
+   */
+  const requirePhoto = request.nextUrl.searchParams.get('requirePhoto') === '1';
   const kstToday = new Date(
     new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })
   ).toISOString().slice(0, 10);
@@ -123,6 +129,22 @@ export async function GET(request: NextRequest) {
 
   if (activities.length === 0) {
     return NextResponse.json({ ok: true, log, synced: false });
+  }
+
+  // 이른 크론(requirePhoto): 사진이 아직 없으면 게시하지 않고 넘김 —
+  // iOS 자동화 지연으로 사진이 늦게 도착하는 날은 뒤 catch-up 크론이 게시.
+  if (requirePhoto) {
+    const pickedNow = await pickedPhotos.findByDate(syncUserId, todayStr);
+    if (!pickedNow?.blob_url) {
+      log.push('사진 미준비 — 이 실행은 건너뜀 (뒤 크론이 게시)');
+      return NextResponse.json({
+        ok: true,
+        synced: false,
+        skipped: true,
+        reason: 'photo_not_ready',
+        log,
+      });
+    }
   }
 
   // ------------------------------------------------------------------

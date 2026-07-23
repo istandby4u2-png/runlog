@@ -3,7 +3,7 @@ import sharp from 'sharp';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { selectNaturePhoto } from '@/lib/gemini';
 import { uploadUserPhotoBufferWithFallback } from '@/lib/blob-storage';
-import { pickedPhotos } from '@/lib/db-supabase';
+import { pickedPhotos, runningRecords } from '@/lib/db-supabase';
 import {
   saveCandidatePhotos,
   loadCandidatePhotos,
@@ -162,9 +162,26 @@ export async function POST(request: NextRequest) {
 
   await pickedPhotos.upsert(userId, dateStr, uploaded.url);
 
+  // 사진이 게시 후 늦게 도착한 날: 해당 날짜 기록이 이미 있으면 배경을 바로 반영
+  // (iOS 자동화 지연으로 그라데이션으로 게시된 경우, 최소한 사이트 기록은 사진 표시)
+  let recordUpdated = false;
+  try {
+    const recordId = await runningRecords.findIdByUserAndRecordDate(userId, dateStr);
+    if (recordId != null) {
+      await runningRecords.update(recordId, { image_url: uploaded.url });
+      recordUpdated = true;
+    }
+  } catch (err) {
+    console.warn(
+      'auto-select: 기록 배경 반영 실패',
+      err instanceof Error ? err.message : err
+    );
+  }
+
   return NextResponse.json({
     ok: true,
     date: dateStr,
+    recordUpdated,
     newPhotos: images.length,
     candidates: candidates.length,
     selectedIndex: index,

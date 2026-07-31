@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserIdFromRequest } from '@/lib/auth';
 import type { StravaActivitySummary } from '@/lib/strava-api';
 import { saveIngestedWorkouts } from '@/lib/ingested-workouts';
+import { refreshRecordFromWorkouts } from '@/lib/refresh-record-from-workouts';
 import { extractWorkoutsFromImage, type ExtractedWorkout } from '@/lib/gemini';
 
 const AUTO_SYNC_USER_ID = parseInt(process.env.AUTO_SYNC_USER_ID || '0', 10);
@@ -379,14 +380,24 @@ export async function POST(request: NextRequest) {
   }
 
   const saved: Record<string, number> = {};
+  // 이미 사이트 기록이 있는 날짜는 갱신 (늦게 도착한 운동 자동 반영).
+  // 기록이 없으면 daily-sync 크론이 최초 생성·IG 게시를 맡는다.
+  const refreshed: Record<string, number> = {};
   for (const [dateStr, list] of byDate) {
     const merged = await saveIngestedWorkouts(userId, dateStr, list);
     saved[dateStr] = merged.length;
+    try {
+      const res = await refreshRecordFromWorkouts(userId, dateStr);
+      if (res.updated && res.recordId != null) refreshed[dateStr] = res.recordId;
+    } catch {
+      // 기록 갱신 실패는 ingest 성공을 막지 않는다 (데이터는 이미 저장됨).
+    }
   }
 
   return NextResponse.json({
     ok: true,
     saved,
+    refreshed: Object.keys(refreshed).length > 0 ? refreshed : undefined,
     parsed: parsedFromImage,
     skipped: skipped.length > 0 ? skipped : undefined,
   });

@@ -21,6 +21,7 @@ import {
 } from '@/lib/strava-api';
 import { fetchDayActivitySummaries } from '@/lib/garmin-api';
 import { loadIngestedWorkouts } from '@/lib/ingested-workouts';
+import { mergeGarminAndIngested } from '@/lib/merge-activities';
 import { runningRecords } from '@/lib/db-supabase';
 
 export type RefreshRecordResult = {
@@ -41,22 +42,20 @@ export async function refreshRecordFromWorkouts(
     return { updated: false, recordId: null, reason: 'no_record' };
   }
 
-  // daily-sync와 동일하게 Garmin 활동 + 단축어 ingest를 합친다.
-  let activities: StravaActivitySummary[] = [];
+  // daily-sync와 동일하게 Garmin 활동 + 단축어 ingest를 합친다(소스 간 중복 제거).
+  let garmin: StravaActivitySummary[] = [];
   try {
-    activities = await fetchDayActivitySummaries(dateStr);
+    garmin = await fetchDayActivitySummaries(dateStr);
   } catch {
     // Garmin 실패해도 ingest 운동만으로 갱신 진행
   }
+  let ingested: StravaActivitySummary[] = [];
   try {
-    const ingested = await loadIngestedWorkouts(userId, dateStr);
-    if (ingested.length > 0) activities = [...activities, ...ingested];
+    ingested = await loadIngestedWorkouts(userId, dateStr);
   } catch {
     // ingest 로드 실패는 무시 (Garmin만으로라도 갱신)
   }
-  activities.sort((a, b) =>
-    (b.startTimeLocal || '').localeCompare(a.startTimeLocal || '')
-  );
+  const activities = mergeGarminAndIngested(garmin, ingested);
   if (activities.length === 0) {
     return { updated: false, recordId, reason: 'no_activities' };
   }

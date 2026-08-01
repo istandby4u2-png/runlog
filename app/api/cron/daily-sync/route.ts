@@ -9,6 +9,7 @@ import {
 } from '@/lib/strava-api';
 import { fetchDayActivitySummaries } from '@/lib/garmin-api';
 import { loadIngestedWorkouts } from '@/lib/ingested-workouts';
+import { mergeGarminAndIngested } from '@/lib/merge-activities';
 import {
   publishImagePost,
   refreshLongLivedToken,
@@ -118,10 +119,9 @@ export async function GET(request: NextRequest) {
   try {
     const ingested = await loadIngestedWorkouts(syncUserId, todayStr);
     if (ingested.length > 0) {
-      activities = [...activities, ...ingested].sort((a, b) =>
-        (b.startTimeLocal || '').localeCompare(a.startTimeLocal || '')
-      );
-      log.push(`Apple(단축어): ${ingested.length}건 합류`);
+      // Garmin·단축어에 같은 운동이 겹치면 중복 제거 (같은 종목 + 시작 ±10분)
+      activities = mergeGarminAndIngested(activities, ingested);
+      log.push(`Apple(단축어): ${ingested.length}건 합류 (중복 제거 후 총 ${activities.length}건)`);
     }
   } catch (err: unknown) {
     log.push(`Apple(단축어) error: ${err instanceof Error ? err.message : String(err)}`);

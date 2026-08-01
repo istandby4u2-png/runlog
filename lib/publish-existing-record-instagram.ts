@@ -6,6 +6,7 @@ import type { StravaActivitySummary } from '@/lib/strava-api';
 import { buildStravaInstagramCaption } from '@/lib/strava-api';
 import { fetchDayActivitySummaries } from '@/lib/garmin-api';
 import { loadIngestedWorkouts } from '@/lib/ingested-workouts';
+import { mergeGarminAndIngested } from '@/lib/merge-activities';
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { pickedPhotos, runningRecords } from '@/lib/db-supabase';
 import { uploadPublicJpegWithFallback } from '@/lib/blob-storage';
@@ -67,22 +68,20 @@ async function loadActivitiesForRecord(
     burned_calories: number | null;
   }
 ): Promise<{ activities: StravaActivitySummary[]; source: 'activity' | 'synthetic' }> {
-  let activities: StravaActivitySummary[] = [];
+  let garmin: StravaActivitySummary[] = [];
   try {
-    activities = await fetchDayActivitySummaries(record.record_date);
+    garmin = await fetchDayActivitySummaries(record.record_date);
   } catch {
     // Garmin 조회 실패는 무시 — 단축어 전송분·기록 수치로 대체
   }
+  let ingested: StravaActivitySummary[] = [];
   try {
-    const ingested = await loadIngestedWorkouts(userId, record.record_date);
-    if (ingested.length > 0) {
-      activities = [...activities, ...ingested].sort((a, b) =>
-        (b.startTimeLocal || '').localeCompare(a.startTimeLocal || '')
-      );
-    }
+    ingested = await loadIngestedWorkouts(userId, record.record_date);
   } catch {
     // ignore
   }
+  // Garmin·단축어에 같은 운동이 겹치면 중복 제거
+  const activities = mergeGarminAndIngested(garmin, ingested);
 
   if (activities.length > 0) {
     return { activities, source: 'activity' };

@@ -17,12 +17,83 @@ import {
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { runningRecords, userTokens, pickedPhotos } from '@/lib/db-supabase';
 import { uploadImage } from '@/lib/blob-storage';
+import { isIgPublished, markIgPublished } from '@/lib/ig-published';
+import { publishExistingRecordToInstagram } from '@/lib/publish-existing-record-instagram';
 
 const AUTO_SYNC_USER_ID = parseInt(process.env.AUTO_SYNC_USER_ID || '0', 10);
 const CRON_SECRET = process.env.CRON_SECRET;
 
 /** Instagram 게시(컨테이너 폴링 ~45s+)까지 포함 — 60초면 IG 미게시가 잦음 */
 export const maxDuration = 300;
+
+/**
+ * 밀린 게시 처리 시작일. 이 날짜 이전은 절대 건드리지 않는다 —
+ * 표식(ig-published) 도입 전에 이미 게시된 과거 기록이 다시 올라가는 사고 방지.
+ */
+const IG_SWEEP_START = '2026-08-08';
+/** 며칠 전까지 훑을지 */
+const IG_SWEEP_DAYS = 3;
+/** 한 번의 크론에서 밀린 게시 최대 건수 (IG 폴링 ~45s+ → 실행 제한 300s 안에 들어오도록) */
+const IG_SWEEP_MAX = 1;
+
+function shiftDate(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * 사진이 없어 «보류»된 지난 날 중, 그 사이 사진이 도착한 날을 Instagram에 게시.
+ *
+ * 사진 자동화(iOS)가 저녁에 실행되지 않거나 늦게 실행되는 날이 있어, 그런 날은
+ * 그라데이션으로 올리지 않고 사이트 기록만 만들어 둔다. 사진이 도착하면
+ * auto-select가 기록 배경을 채우고, 다음 크론(이 함수)이 IG에 올린다.
+ * 사진이 끝내 안 오면 게시하지 않는다(그라데이션 게시 방지).
+ */
+async function publishPendingDays(
+  userId: number,
+  todayStr: string,
+  log: string[]
+): Promise<void> {
+  const to = shiftDate(todayStr, -1);
+  if (to < IG_SWEEP_START) return;
+  const from = (() => {
+    const f = shiftDate(todayStr, -IG_SWEEP_DAYS);
+    return f < IG_SWEEP_START ? IG_SWEEP_START : f;
+  })();
+  if (from > to) return;
+
+  let dates: string[];
+  try {
+    // 배경 이미지가 있는 날짜만 = 사진이 (늦게라도) 도착한 날
+    dates = await runningRecords.listRecordDatesWithImageInRange(userId, from, to);
+  } catch (err: unknown) {
+    log.push(`밀린 게시 조회 실패: ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
+
+  let done = 0;
+  for (const dateStr of dates) {
+    if (done >= IG_SWEEP_MAX) break;
+    try {
+      if (await isIgPublished(userId, dateStr)) continue;
+      const recordId = await runningRecords.findIdByUserAndRecordDate(userId, dateStr);
+      if (recordId == null) continue;
+      const pub = await publishExistingRecordToInstagram(userId, recordId);
+      if (pub.ok) {
+        await markIgPublished(userId, dateStr, pub.igMediaId ?? null);
+        log.push(`밀린 게시: ${dateStr} → Instagram ${pub.igMediaId ?? '(id 없음)'}`);
+        done++;
+      } else {
+        log.push(`밀린 게시 실패(${dateStr}): ${pub.error ?? '알 수 없는 오류'}`);
+      }
+    } catch (err: unknown) {
+      log.push(
+        `밀린 게시 오류(${dateStr}): ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+}
 
 export async function GET(request: NextRequest) {
   const sessionUserId = getUserIdFromRequest();
@@ -76,6 +147,11 @@ export async function GET(request: NextRequest) {
         ? `동기화 사용자: 로그인 계정 (user_id=${syncUserId})`
         : `동기화 사용자: 환경변수 기본 (AUTO_SYNC_USER_ID=${syncUserId})`
   );
+
+  // 사진이 늦게 도착해 보류됐던 지난 날 먼저 게시 (날짜 지정 수동 실행에서는 건너뜀)
+  if (!dateParam) {
+    await publishPendingDays(syncUserId, todayStr, log);
+  }
 
   // 중복 실행 방지: 크론 재시도·수동 중복 실행으로 같은 날짜 기록이 2개 생기는 사고 방지
   const existingId = await runningRecords.findIdByUserAndRecordDate(
@@ -196,8 +272,23 @@ export async function GET(request: NextRequest) {
 
   // ------------------------------------------------------------------
   // 4. Instagram: generate card image & publish
+  //    사진이 없으면 게시하지 않고 보류 — 그라데이션 배경으로 올리는 대신,
+  //    사진이 도착한 뒤 다음 크론의 publishPendingDays가 게시한다.
   // ------------------------------------------------------------------
   let igMediaId: string | null = null;
+  if (!photoBuffer) {
+    log.push(
+      'Instagram: 사진 없음 — 게시 보류 (사진 도착 후 다음 크론이 게시)'
+    );
+    return NextResponse.json({
+      ok: true,
+      synced: true,
+      recordId,
+      igMediaId: null,
+      igPending: true,
+      log,
+    });
+  }
   try {
     const igToken = await userTokens.findByProvider(syncUserId, 'instagram');
     if (igToken?.access_token && igToken.extra_data) {
@@ -253,6 +344,8 @@ export async function GET(request: NextRequest) {
           const caption = buildStravaInstagramCaption(activities, todayStr);
           igMediaId = await publishImagePost(igUserId, accessToken, cardUrl, caption);
           log.push(`Instagram: published media ${igMediaId}`);
+          // 다음 크론의 «밀린 게시»가 같은 날을 다시 올리지 않도록 표식
+          await markIgPublished(syncUserId, todayStr, igMediaId);
         } else {
           log.push('Instagram: card image upload failed');
         }

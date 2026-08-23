@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { list as listBlobs, del as delBlobs } from '@vercel/blob';
 import { supabaseAdmin } from '@/lib/supabase';
 
 const CRON_SECRET = process.env.CRON_SECRET;
@@ -105,6 +106,75 @@ function mb(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
+type BlobSweepResult = {
+  scanned: number;
+  referenced: number;
+  orphans: number;
+  orphanSize: string;
+  deleted?: number;
+  errors?: string[];
+};
+
+/**
+ * Vercel Blob 정리.
+ *
+ * Supabase로 옮기기 전에 쓰던 저장소라 옛 파일이 그대로 남아 있다(2026-08 기준
+ * 6GB 중 대부분이 고아). 아직 Blob URL을 배경으로 쓰는 기록이 있으므로,
+ * Supabase 쪽과 똑같이 «참조되지 않는 것만» 지운다.
+ */
+async function sweepVercelBlob(
+  referencedUrls: Set<string>,
+  apply: boolean
+): Promise<BlobSweepResult | { skipped: string }> {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return { skipped: 'BLOB_READ_WRITE_TOKEN 미설정' };
+  }
+
+  const all: { url: string; size: number; uploadedAt: number }[] = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const page = await listBlobs({ limit: 1000, cursor });
+    for (const b of page.blobs) {
+      all.push({
+        url: b.url,
+        size: Number(b.size) || 0,
+        uploadedAt: new Date(b.uploadedAt).getTime() || 0,
+      });
+    }
+    if (!page.hasMore) break;
+    cursor = page.cursor;
+  }
+
+  const now = Date.now();
+  const orphans = all.filter(
+    (b) => !referencedUrls.has(b.url) && now - b.uploadedAt > MIN_AGE_MS
+  );
+  const orphanBytes = orphans.reduce((sum, b) => sum + b.size, 0);
+
+  const result: BlobSweepResult = {
+    scanned: all.length,
+    referenced: all.length - orphans.length,
+    orphans: orphans.length,
+    orphanSize: mb(orphanBytes),
+  };
+  if (!apply) return result;
+
+  let deleted = 0;
+  const errors: string[] = [];
+  for (let i = 0; i < orphans.length; i += DELETE_BATCH) {
+    const batch = orphans.slice(i, i + DELETE_BATCH).map((b) => b.url);
+    try {
+      await delBlobs(batch);
+      deleted += batch.length;
+    } catch (err: unknown) {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+  result.deleted = deleted;
+  if (errors.length > 0) result.errors = errors.slice(0, 3);
+  return result;
+}
+
 /**
  * GET /api/admin/storage-cleanup            드라이런 (삭제 없음)
  * GET /api/admin/storage-cleanup?apply=1    실제 삭제
@@ -144,9 +214,16 @@ export async function GET(request: NextRequest) {
   // 1. 참조 중인 객체 경로 수집 (하나라도 실패하면 삭제하지 않는다)
   // ---------------------------------------------------------------
   const referenced = new Set<string>();
+  /** Vercel Blob은 URL 그대로 비교 (경로 개념이 없다) */
+  const referencedBlobUrls = new Set<string>();
   const addRef = (v: unknown) => {
     if (typeof v !== 'string' || !v.trim()) return;
-    const p = objectPathFromPublicUrl(v.trim(), cardBucket);
+    const url = v.trim();
+    if (url.includes('blob.vercel-storage.com')) {
+      referencedBlobUrls.add(url);
+      return;
+    }
+    const p = objectPathFromPublicUrl(url, cardBucket);
     if (p) referenced.add(p);
   };
 
@@ -196,10 +273,13 @@ export async function GET(request: NextRequest) {
   });
   const candidateBytes = staleCandidates.reduce((s, o) => s + o.size, 0);
 
+  const blob = await sweepVercelBlob(referencedBlobUrls, apply);
+
   const result: Record<string, unknown> = {
     ok: true,
     applied: apply,
     cardBucket,
+    blob,
     cards: {
       scanned: allCards.length,
       referenced: referenced.size,

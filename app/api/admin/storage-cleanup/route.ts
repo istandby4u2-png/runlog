@@ -166,7 +166,10 @@ export async function GET(request: NextRequest) {
         );
       }
       if (!data || data.length === 0) break;
-      for (const row of data) addRef((row as Record<string, unknown>)[column]);
+      // 컬럼명을 변수로 select 하면 supabase-js가 GenericStringError[]로 추론하므로
+      // unknown을 거쳐 캐스팅한다
+      const rows = data as unknown as Record<string, unknown>[];
+      for (const row of rows) addRef(row[column]);
       if (data.length < PAGE) break;
       from += PAGE;
     }

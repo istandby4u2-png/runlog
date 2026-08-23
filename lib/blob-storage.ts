@@ -462,6 +462,28 @@ export function getImageStorageEnvSummary() {
 }
 
 /**
+ * Instagram 게시를 마친 카드 이미지를 정리.
+ *
+ * 카드는 인스타그램이 컨테이너를 만들 때 한 번 내려받으면 그만이고, 게시된 미디어는
+ * 인스타그램이 자체 호스팅한다. 우리 스토리지에 남겨두면 매 게시·재게시마다 쌓여
+ * 무료 용량을 잠식하므로(2026-08 스토리지 한도 초과 사고의 주원인) 게시 직후 지운다.
+ * 정리 실패가 게시 성공을 되돌릴 이유는 없으므로 예외는 삼킨다.
+ */
+export async function discardPublishedCard(
+  cardUrl: string | null | undefined
+): Promise<void> {
+  if (!cardUrl) return;
+  try {
+    await deleteImage(cardUrl);
+  } catch (err: unknown) {
+    console.warn(
+      '카드 이미지 정리 실패:',
+      err instanceof Error ? err.message : err
+    );
+  }
+}
+
+/**
  * 저장된 이미지 URL 삭제 — Vercel Blob 또는 `SUPABASE_PUBLIC_CARD_BUCKET` 공개 객체
  */
 export async function deleteImage(imageUrl: string): Promise<boolean> {

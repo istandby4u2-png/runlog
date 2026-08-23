@@ -16,7 +16,7 @@ import {
 } from '@/lib/instagram-api';
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { runningRecords, userTokens, pickedPhotos } from '@/lib/db-supabase';
-import { uploadImage } from '@/lib/blob-storage';
+import { uploadImage, discardPublishedCard } from '@/lib/blob-storage';
 import { isIgPublished, markIgPublished } from '@/lib/ig-published';
 import { publishExistingRecordToInstagram } from '@/lib/publish-existing-record-instagram';
 
@@ -346,6 +346,8 @@ export async function GET(request: NextRequest) {
           log.push(`Instagram: published media ${igMediaId}`);
           // 다음 크론의 «밀린 게시»가 같은 날을 다시 올리지 않도록 표식
           await markIgPublished(syncUserId, todayStr, igMediaId);
+          // 게시가 끝난 카드는 스토리지에서 정리 (IG가 자체 호스팅)
+          await discardPublishedCard(cardUrl);
         } else {
           log.push('Instagram: card image upload failed');
         }

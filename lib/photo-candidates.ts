@@ -45,6 +45,51 @@ export async function saveCandidatePhotos(
   }
 }
 
+/**
+ * 오래된 날짜의 후보 사진 삭제.
+ *
+ * 후보는 «그날 전체 후보 중에서 다시 선별»하기 위한 임시 사본이라 그날이 지나면
+ * 쓸모가 없는데, 지금까지 지우는 곳이 없어 영구 누적됐다(2026-08 스토리지 한도
+ * 초과 사고의 원인 중 하나). 최근 keepDays일치만 남기고 지운다.
+ */
+export async function pruneOldCandidates(
+  userId: number,
+  keepDays = 2
+): Promise<number> {
+  if (!supabaseAdmin) return 0;
+
+  const cutoff = new Date(
+    new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })
+  );
+  cutoff.setDate(cutoff.getDate() - keepDays);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+  const base = `photos-candidates/${userId}`;
+  const { data: dateDirs, error } = await supabaseAdmin.storage
+    .from(BUCKET)
+    .list(base, { limit: 1000 });
+  if (error || !dateDirs) return 0;
+
+  let removed = 0;
+  for (const dir of dateDirs) {
+    // 날짜 폴더만 대상 (YYYY-MM-DD), 최근 keepDays일치는 보존
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dir.name)) continue;
+    if (dir.name >= cutoffStr) continue;
+
+    const { data: files } = await supabaseAdmin.storage
+      .from(BUCKET)
+      .list(`${base}/${dir.name}`, { limit: 1000 });
+    if (!files || files.length === 0) continue;
+
+    const paths = files.map((f) => `${base}/${dir.name}/${f.name}`);
+    const { error: rmErr } = await supabaseAdmin.storage
+      .from(BUCKET)
+      .remove(paths);
+    if (!rmErr) removed += paths.length;
+  }
+  return removed;
+}
+
 /** 그날의 후보 전체를 로드 (오래된 순, 최대 MAX_CANDIDATES). */
 export async function loadCandidatePhotos(
   userId: number,

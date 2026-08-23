@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import sharp from 'sharp';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { selectNaturePhoto } from '@/lib/gemini';
-import { uploadUserPhotoBufferWithFallback } from '@/lib/blob-storage';
+import { uploadUserPhotoBufferWithFallback, deleteImage } from '@/lib/blob-storage';
 import { pickedPhotos, runningRecords } from '@/lib/db-supabase';
 import {
   saveCandidatePhotos,
   loadCandidatePhotos,
+  pruneOldCandidates,
 } from '@/lib/photo-candidates';
 
 const AUTO_SYNC_USER_ID = parseInt(process.env.AUTO_SYNC_USER_ID || '0', 10);
@@ -123,6 +124,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // 지난 날짜 후보는 재선별에 쓰이지 않으므로 정리 (스토리지 무한 누적 방지)
+  let prunedCandidates = 0;
+  try {
+    prunedCandidates = await pruneOldCandidates(userId);
+  } catch (err) {
+    console.warn(
+      'auto-select: 오래된 후보 정리 실패',
+      err instanceof Error ? err.message : err
+    );
+  }
+
   // Gemini로 자연 사진 선별 (실패 시 첫 번째 사진 폴백)
   const selection = await selectNaturePhoto(
     candidates.map(({ buffer, mimeType }) => ({ buffer, mimeType }))
@@ -137,8 +149,8 @@ export async function POST(request: NextRequest) {
   try {
     normalized = await sharp(chosen.buffer)
       .rotate()
-      .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 88 })
+      .resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 82 })
       .toBuffer();
     normalizedMime = 'image/jpeg';
   } catch (err) {
@@ -146,6 +158,16 @@ export async function POST(request: NextRequest) {
       'auto-select: 이미지 정규화 실패, 원본 사용',
       err instanceof Error ? err.message : err
     );
+  }
+
+  // 같은 날짜에 이미 올려둔 사진 — 새 사진으로 교체한 뒤 지운다(날짜당 1장 유지).
+  // 단축어가 사진을 한 장씩 여러 번 보내므로 이 정리가 없으면 하루 5~10장이 쌓인다.
+  let previousPickedUrl: string | null = null;
+  try {
+    const previous = await pickedPhotos.findByDate(userId, dateStr);
+    previousPickedUrl = previous?.blob_url?.trim() || null;
+  } catch {
+    // 조회 실패 시 정리는 건너뛴다 (업로드 자체는 계속)
   }
 
   const uploaded = await uploadUserPhotoBufferWithFallback(
@@ -165,6 +187,7 @@ export async function POST(request: NextRequest) {
   // 사진이 게시 후 늦게 도착한 날: 해당 날짜 기록이 이미 있으면 배경을 바로 반영
   // (iOS 자동화 지연으로 그라데이션으로 게시된 경우, 최소한 사이트 기록은 사진 표시)
   let recordUpdated = false;
+  let recordUpdateFailed = false;
   try {
     const recordId = await runningRecords.findIdByUserAndRecordDate(userId, dateStr);
     if (recordId != null) {
@@ -172,10 +195,25 @@ export async function POST(request: NextRequest) {
       recordUpdated = true;
     }
   } catch (err) {
+    recordUpdateFailed = true;
     console.warn(
       'auto-select: 기록 배경 반영 실패',
       err instanceof Error ? err.message : err
     );
+  }
+
+  // picked_photos·기록 모두 새 URL로 갱신된 뒤에야 이전 파일을 지운다
+  // (그 전에 지우면 잠깐이라도 깨진 배경이 노출될 수 있다)
+  // 기록 갱신이 실패했다면 기록이 아직 이전 URL을 가리키므로 지우지 않는다
+  if (previousPickedUrl && previousPickedUrl !== uploaded.url && !recordUpdateFailed) {
+    try {
+      await deleteImage(previousPickedUrl);
+    } catch (err) {
+      console.warn(
+        'auto-select: 이전 사진 정리 실패',
+        err instanceof Error ? err.message : err
+      );
+    }
   }
 
   return NextResponse.json({
@@ -187,6 +225,7 @@ export async function POST(request: NextRequest) {
     selectedIndex: index,
     reason,
     blobUrl: uploaded.url,
+    prunedCandidates: prunedCandidates > 0 ? prunedCandidates : undefined,
     skipped: skipped.length > 0 ? skipped : undefined,
   });
 }

@@ -16,7 +16,7 @@ import { loadIngestedWorkouts } from '@/lib/ingested-workouts';
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { publishPublicImageToInstagramForUser } from '@/lib/instagram-user-publish';
 import { runningRecords, userTokens, pickedPhotos } from '@/lib/db-supabase';
-import { uploadPublicJpegWithFallback } from '@/lib/blob-storage';
+import { uploadPublicJpegWithFallback, discardPublishedCard } from '@/lib/blob-storage';
 
 export type SyncStravaDayResult = {
   ok: boolean;
@@ -198,6 +198,7 @@ export async function syncStravaDayForUser(
         );
         igMediaId = pub.igMediaId;
         log.push(...pub.log);
+        if (igMediaId) await discardPublishedCard(uploaded.url);
       } else {
         log.push(`Instagram: 카드 업로드 실패 — ${uploaded.error}`);
       }

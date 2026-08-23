@@ -9,7 +9,7 @@ import { loadIngestedWorkouts } from '@/lib/ingested-workouts';
 import { mergeGarminAndIngested } from '@/lib/merge-activities';
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { pickedPhotos, runningRecords } from '@/lib/db-supabase';
-import { uploadPublicJpegWithFallback } from '@/lib/blob-storage';
+import { uploadPublicJpegWithFallback, discardPublishedCard } from '@/lib/blob-storage';
 import { publishPublicImageToInstagramForUser } from '@/lib/instagram-user-publish';
 
 /** 기록 제목(한/영/일)에서 종목 추론 — Garmin·단축어 데이터가 없어 기록 수치로 카드 만들 때 */
@@ -195,6 +195,8 @@ export async function publishExistingRecordToInstagram(
     cardUrl,
     caption
   );
+  // 게시가 끝난 카드는 스토리지에서 정리 (실패했으면 남겨 두고 정리 엔드포인트가 회수)
+  if (igMediaId) await discardPublishedCard(cardUrl);
 
   return {
     ok: true,

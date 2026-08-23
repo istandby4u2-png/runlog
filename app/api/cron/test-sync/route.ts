@@ -15,7 +15,7 @@ import {
 } from '@/lib/instagram-api';
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { runningRecords, userTokens, pickedPhotos } from '@/lib/db-supabase';
-import { uploadImage } from '@/lib/blob-storage';
+import { uploadImage, discardPublishedCard } from '@/lib/blob-storage';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
@@ -220,6 +220,7 @@ export async function GET(request: NextRequest) {
           const caption = buildStravaInstagramCaption(activities, dateStr);
           igMediaId = await publishImagePost(igUserId, accessToken, cardUrl, caption);
           log.push(`Instagram: published media ${igMediaId}`);
+          await discardPublishedCard(cardUrl);
         } else {
           log.push('Instagram: card image upload failed');
         }

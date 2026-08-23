@@ -14,8 +14,9 @@ import {
   isGoogleOauthResponseRevokedErrorMessage,
   isGoogleRefreshTokenInvalidError,
 } from '@/lib/google-photos-api';
-import { userTokens, pickedPhotos, googlePickerSessions } from '@/lib/db-supabase';
-import { uploadUserPhotoBufferWithFallback } from '@/lib/blob-storage';
+import { userTokens, pickedPhotos, googlePickerSessions, runningRecords } from '@/lib/db-supabase';
+import { uploadUserPhotoBufferWithFallback, deleteImage } from '@/lib/blob-storage';
+import { normalizePhotoForCard } from '@/lib/photo-normalize';
 import { rfc3339ToKstYmd } from '@/lib/kst-calendar';
 
 export const dynamic = 'force-dynamic';
@@ -40,6 +41,32 @@ async function clearGooglePhotosOnInvalidGrant(userId: number, sessionId?: strin
  * POST /api/photos/picker
  * Create a new Picker session → returns { sessionId, pickerUri }
  */
+/**
+ * 같은 날짜에 이미 올려둔 사진 정리 — Picker로 다시 고르면 이전 파일은 쓰이지 않는다.
+ * 단, 그 날짜 기록이 아직 그 URL을 배경으로 쓰고 있으면 건드리지 않는다.
+ */
+async function discardPreviousPicked(
+  userId: number,
+  dateStr: string,
+  prevUrl: string | null,
+  newUrl: string
+): Promise<void> {
+  if (!prevUrl || prevUrl === newUrl) return;
+  try {
+    const recordId = await runningRecords.findIdByUserAndRecordDate(userId, dateStr);
+    if (recordId != null) {
+      const record = await runningRecords.findById(recordId, userId);
+      if ((record?.image_url || '').trim() === prevUrl) return;
+    }
+    await deleteImage(prevUrl);
+  } catch (err: unknown) {
+    console.warn(
+      'picker: 이전 사진 정리 실패',
+      err instanceof Error ? err.message : err
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   const userId = getUserIdFromRequest();
   if (!userId) {
@@ -283,13 +310,22 @@ export async function GET(request: NextRequest) {
             item.mediaFile.baseUrl,
             accessToken
           );
-          const up = await uploadUserPhotoBufferWithFallback(buffer, contentType, 'records');
+          // 원본 해상도를 그대로 저장하면 장당 3~4MB라 스토리지가 금방 찬다
+          const norm = await normalizePhotoForCard(buffer, contentType);
+          const previous = await pickedPhotos.findByDate(userId, kstDay);
+          const previousUrl = previous?.blob_url?.trim() || null;
+          const up = await uploadUserPhotoBufferWithFallback(
+            norm.buffer,
+            norm.mimeType,
+            'records'
+          );
           if (!up.ok) {
             skipped.push(`${item.id}: ${up.error}`);
             continue;
           }
           const blobUrl = up.url;
           await pickedPhotos.upsert(userId, kstDay, blobUrl);
+          await discardPreviousPicked(userId, kstDay, previousUrl, blobUrl);
           results.push({ photoDate: kstDay, blobUrl, mediaId: item.id });
         } catch (oneErr: unknown) {
           skipped.push(
@@ -319,7 +355,14 @@ export async function GET(request: NextRequest) {
       firstPhoto.mediaFile.baseUrl,
       accessToken
     );
-    const up = await uploadUserPhotoBufferWithFallback(buffer, contentType, 'records');
+    const normalized = await normalizePhotoForCard(buffer, contentType);
+    const previousPicked = await pickedPhotos.findByDate(userId, photoDate);
+    const previousPickedUrl = previousPicked?.blob_url?.trim() || null;
+    const up = await uploadUserPhotoBufferWithFallback(
+      normalized.buffer,
+      normalized.mimeType,
+      'records'
+    );
 
     if (!up.ok) {
       await googlePickerSessions.delete(sessionId).catch(() => {});
@@ -331,6 +374,7 @@ export async function GET(request: NextRequest) {
     const blobUrl = up.url;
 
     await pickedPhotos.upsert(userId, photoDate, blobUrl);
+    await discardPreviousPicked(userId, photoDate, previousPickedUrl, blobUrl);
 
     await deletePickerSession(accessToken, sessionId).catch(() => {});
     await googlePickerSessions.delete(sessionId).catch(() => {});

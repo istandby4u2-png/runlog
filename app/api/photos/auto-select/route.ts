@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import sharp from 'sharp';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { selectNaturePhoto } from '@/lib/gemini';
+import { normalizePhotoForCard } from '@/lib/photo-normalize';
 import { uploadUserPhotoBufferWithFallback, deleteImage } from '@/lib/blob-storage';
 import { pickedPhotos, runningRecords } from '@/lib/db-supabase';
 import {
@@ -143,22 +143,9 @@ export async function POST(request: NextRequest) {
   const reason = selection?.reason ?? 'AI 선별 실패 — 첫 번째 사진 사용';
   const chosen = candidates[index];
 
-  // EXIF 회전을 픽셀에 반영 (satori 카드 생성기는 EXIF orientation을 무시함)
-  let normalized = chosen.buffer;
-  let normalizedMime = chosen.mimeType;
-  try {
-    normalized = await sharp(chosen.buffer)
-      .rotate()
-      .resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 82 })
-      .toBuffer();
-    normalizedMime = 'image/jpeg';
-  } catch (err) {
-    console.warn(
-      'auto-select: 이미지 정규화 실패, 원본 사용',
-      err instanceof Error ? err.message : err
-    );
-  }
+  // EXIF 회전 반영 + 카드 규격으로 축소 (picker 경로와 동일 규격)
+  const { buffer: normalized, mimeType: normalizedMime } =
+    await normalizePhotoForCard(chosen.buffer, chosen.mimeType);
 
   // 같은 날짜에 이미 올려둔 사진 — 새 사진으로 교체한 뒤 지운다(날짜당 1장 유지).
   // 단축어가 사진을 한 장씩 여러 번 보내므로 이 정리가 없으면 하루 5~10장이 쌓인다.

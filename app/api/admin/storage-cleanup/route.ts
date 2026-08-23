@@ -204,6 +204,13 @@ export async function GET(request: NextRequest) {
   }
 
   const apply = request.nextUrl.searchParams.get('apply') === '1';
+  /**
+   * scope=blob  → Vercel Blob만, scope=supabase → Supabase만, 기본 all.
+   * 한쪽 집계가 의심스러울 때 다른 쪽만 안전하게 처리하기 위한 장치.
+   */
+  const scope = request.nextUrl.searchParams.get('scope') || 'all';
+  const doSupabase = scope === 'all' || scope === 'supabase';
+  const doBlob = scope === 'all' || scope === 'blob';
   const keepDaysRaw = parseInt(
     request.nextUrl.searchParams.get('keepDays') || '2',
     10
@@ -256,7 +263,7 @@ export async function GET(request: NextRequest) {
   // 2. 공개 버킷의 고아 객체
   // ---------------------------------------------------------------
   const now = Date.now();
-  const allCards = await listAllObjects(cardBucket, '');
+  const allCards = doSupabase ? await listAllObjects(cardBucket, '') : [];
   const orphans = allCards.filter(
     (o) => !referenced.has(o.path) && now - o.createdAt > MIN_AGE_MS
   );
@@ -266,18 +273,23 @@ export async function GET(request: NextRequest) {
   // 3. 오래된 후보 사진 (photos-candidates/{userId}/{YYYY-MM-DD}/)
   // ---------------------------------------------------------------
   const cutoff = kstDateString(-keepDays);
-  const allCandidates = await listAllObjects(DATA_BUCKET, 'photos-candidates');
+  const allCandidates = doSupabase
+    ? await listAllObjects(DATA_BUCKET, 'photos-candidates')
+    : [];
   const staleCandidates = allCandidates.filter((o) => {
     const m = o.path.match(/^photos-candidates\/\d+\/(\d{4}-\d{2}-\d{2})\//);
     return !!m && m[1] < cutoff;
   });
   const candidateBytes = staleCandidates.reduce((s, o) => s + o.size, 0);
 
-  const blob = await sweepVercelBlob(referencedBlobUrls, apply);
+  const blob = doBlob
+    ? await sweepVercelBlob(referencedBlobUrls, apply)
+    : { skipped: 'scope 제외' };
 
   const result: Record<string, unknown> = {
     ok: true,
     applied: apply,
+    scope,
     cardBucket,
     blob,
     cards: {
@@ -301,11 +313,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(result);
   }
 
-  const cardDel = await removeInBatches(cardBucket, orphans.map((o) => o.path));
-  const candDel = await removeInBatches(
-    DATA_BUCKET,
-    staleCandidates.map((o) => o.path)
-  );
+  const cardDel = doSupabase
+    ? await removeInBatches(cardBucket, orphans.map((o) => o.path))
+    : { deleted: 0, errors: [] as string[] };
+  const candDel = doSupabase
+    ? await removeInBatches(DATA_BUCKET, staleCandidates.map((o) => o.path))
+    : { deleted: 0, errors: [] as string[] };
 
   result.deleted = {
     cards: cardDel.deleted,

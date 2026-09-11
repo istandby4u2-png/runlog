@@ -4,6 +4,7 @@
 
 import type { StravaActivitySummary } from '@/lib/strava-api';
 import { buildStravaInstagramCaption } from '@/lib/strava-api';
+import { getCompanionMention } from '@/lib/companion-mention';
 import { fetchDayActivitySummaries } from '@/lib/garmin-api';
 import { loadIngestedWorkouts } from '@/lib/ingested-workouts';
 import { mergeGarminAndIngested } from '@/lib/merge-activities';
@@ -189,7 +190,13 @@ export async function publishExistingRecordToInstagram(
   }
   const cardUrl = uploaded.url;
 
-  const caption = buildStravaInstagramCaption(activities, record.record_date);
+  const mention = await getCompanionMention(userId, record.record_date);
+  if (mention) log.push(`캡션 멘션: ${mention}`);
+  const caption = buildStravaInstagramCaption(
+    activities,
+    record.record_date,
+    mention
+  );
   const { igMediaId, log: pubLog } = await publishPublicImageToInstagramForUser(
     userId,
     cardUrl,

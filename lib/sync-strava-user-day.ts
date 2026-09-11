@@ -15,6 +15,7 @@ import { fetchDayActivitySummaries } from '@/lib/garmin-api';
 import { loadIngestedWorkouts } from '@/lib/ingested-workouts';
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { publishPublicImageToInstagramForUser } from '@/lib/instagram-user-publish';
+import { getCompanionMention } from '@/lib/companion-mention';
 import { runningRecords, userTokens, pickedPhotos } from '@/lib/db-supabase';
 import { uploadPublicJpegWithFallback, discardPublishedCard } from '@/lib/blob-storage';
 
@@ -190,7 +191,9 @@ export async function syncStravaDayForUser(
         if (uploaded.storage === 'supabase') {
           log.push('Instagram 카드: Supabase Storage에 업로드 (Blob 폴백)');
         }
-        const caption = buildStravaInstagramCaption(activities, dateStr);
+        const mention = await getCompanionMention(userId, dateStr);
+        if (mention) log.push(`캡션 멘션: ${mention}`);
+        const caption = buildStravaInstagramCaption(activities, dateStr, mention);
         const pub = await publishPublicImageToInstagramForUser(
           userId,
           uploaded.url,

@@ -18,6 +18,7 @@ import { generateInstagramCard } from '@/lib/instagram-image';
 import { runningRecords, userTokens, pickedPhotos } from '@/lib/db-supabase';
 import { uploadImage, discardPublishedCard } from '@/lib/blob-storage';
 import { checkIgPublished, markIgPublished } from '@/lib/ig-published';
+import { getCompanionMention } from '@/lib/companion-mention';
 import { publishExistingRecordToInstagram } from '@/lib/publish-existing-record-instagram';
 
 const AUTO_SYNC_USER_ID = parseInt(process.env.AUTO_SYNC_USER_ID || '0', 10);
@@ -360,7 +361,9 @@ export async function GET(request: NextRequest) {
         const cardUrl = await uploadImage(cardBuffer, 'records');
 
         if (cardUrl) {
-          const caption = buildStravaInstagramCaption(activities, todayStr);
+          const mention = await getCompanionMention(syncUserId, todayStr);
+          if (mention) log.push(`캡션 멘션: ${mention}`);
+          const caption = buildStravaInstagramCaption(activities, todayStr, mention);
           igMediaId = await publishImagePost(igUserId, accessToken, cardUrl, caption);
           log.push(`Instagram: published media ${igMediaId}`);
           // 다음 크론의 «밀린 게시»가 같은 날을 다시 올리지 않도록 표식

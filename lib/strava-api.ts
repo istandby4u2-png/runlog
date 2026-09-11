@@ -495,11 +495,17 @@ export function buildStravaRecordContent(activities: StravaActivitySummary[]): s
  */
 export function buildStravaInstagramCaption(
   activities: StravaActivitySummary[],
-  dateStr: string
+  dateStr: string,
+  /** 함께 뛴 사람 멘션(«@handle» 등). 그날 표식이 켜져 있을 때만 전달된다. */
+  mention?: string | null
 ): string {
   const cal = formatInstagramCalendarDate(dateStr);
+  const mentionText = (mention || '').trim();
+  const withLine = mentionText ? `w. ${mentionText}` : '';
   if (activities.length === 0) {
-    return `${cal}\n\n${INSTAGRAM_CAPTION_HASHTAGS}`;
+    return [withLine, cal, INSTAGRAM_CAPTION_HASHTAGS]
+      .filter(Boolean)
+      .join('\n\n');
   }
   const hashtags = buildInstagramHashtags(activities);
 
@@ -515,7 +521,7 @@ export function buildStravaInstagramCaption(
   });
 
   const body = blocks.join('\n\n');
-  return `${body}\n\n${cal}\n\n${hashtags}`;
+  return [body, withLine, cal, hashtags].filter(Boolean).join('\n\n');
 }
 
 /** DB title: 단일은 활동명, 복수는 날짜·건수. */

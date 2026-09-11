@@ -16,12 +16,27 @@ function pathFor(userId: number, dateStr: string): string {
   return `ig-published/${userId}/${dateStr}.json`;
 }
 
-/** 그 날짜를 이미 Instagram에 게시했는지. 조회 실패 시 true(=게시함)로 보아 중복 게시를 막는다. */
-export async function isIgPublished(
+/**
+ * 게시 여부 판정과 «그렇게 판정한 이유».
+ *
+ * isIgPublished는 «게시함»으로 몰아주는 보수적 판정이라, 표식이 실제로 있어서
+ * 건너뛴 것인지 조회가 실패해서 건너뛴 것인지 구분이 안 된다. 밀린 게시가
+ * 조용히 아무것도 안 할 때 원인을 알려면 이 이유가 필요하다.
+ */
+export type IgPublishedCheck = {
+  published: boolean;
+  /** marker=표식 있음, none=미게시, no-admin=관리자 클라이언트 없음, error=조회 실패 */
+  reason: 'marker' | 'none' | 'no-admin' | 'error';
+  detail?: string;
+};
+
+export async function checkIgPublished(
   userId: number,
   dateStr: string
-): Promise<boolean> {
-  if (!supabaseAdmin) return true;
+): Promise<IgPublishedCheck> {
+  if (!supabaseAdmin) {
+    return { published: true, reason: 'no-admin' };
+  }
   const { data, error } = await supabaseAdmin.storage
     .from(BUCKET)
     .download(pathFor(userId, dateStr));
@@ -31,9 +46,22 @@ export async function isIgPublished(
     const msg = (error.message || '').toLowerCase();
     const notFound =
       msg.includes('not found') || msg.includes('nosuchkey') || msg.includes('404');
-    return !notFound;
+    return notFound
+      ? { published: false, reason: 'none' }
+      : { published: true, reason: 'error', detail: error.message || String(error) };
   }
-  return !!data;
+  return data
+    ? { published: true, reason: 'marker' }
+    : { published: false, reason: 'none' };
+}
+
+/** 그 날짜를 이미 Instagram에 게시했는지. 조회 실패 시 true(=게시함)로 보아 중복 게시를 막는다. */
+export async function isIgPublished(
+  userId: number,
+  dateStr: string
+): Promise<boolean> {
+  const { published } = await checkIgPublished(userId, dateStr);
+  return published;
 }
 
 /** 게시 완료 표식 기록 (실패해도 게시 자체는 성공이므로 예외를 던지지 않는다). */

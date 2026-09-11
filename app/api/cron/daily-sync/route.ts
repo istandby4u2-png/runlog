@@ -17,7 +17,7 @@ import {
 import { generateInstagramCard } from '@/lib/instagram-image';
 import { runningRecords, userTokens, pickedPhotos } from '@/lib/db-supabase';
 import { uploadImage, discardPublishedCard } from '@/lib/blob-storage';
-import { isIgPublished, markIgPublished } from '@/lib/ig-published';
+import { checkIgPublished, markIgPublished } from '@/lib/ig-published';
 import { publishExistingRecordToInstagram } from '@/lib/publish-existing-record-instagram';
 
 const AUTO_SYNC_USER_ID = parseInt(process.env.AUTO_SYNC_USER_ID || '0', 10);
@@ -72,13 +72,32 @@ async function publishPendingDays(
     return;
   }
 
+  // 후보가 0건이면 조회 자체가 실패했을 수 있다(listRecordDatesWithImageInRange는
+  // DB 오류 시 예외 대신 빈 배열을 돌려준다). 조용히 끝나지 않도록 항상 남긴다.
+  log.push(
+    `밀린 게시 후보(${from}~${to}): ${dates.length > 0 ? dates.join(', ') : '없음'}`
+  );
+
   let done = 0;
   for (const dateStr of dates) {
     if (done >= IG_SWEEP_MAX) break;
     try {
-      if (await isIgPublished(userId, dateStr)) continue;
+      const check = await checkIgPublished(userId, dateStr);
+      if (check.published) {
+        // reason이 marker가 아니면 «게시함»이 아니라 판정 실패로 건너뛴 것 —
+        // 이 구분이 없어서 밀린 게시가 조용히 멈춘 원인을 못 찾았다.
+        log.push(
+          check.reason === 'marker'
+            ? `밀린 게시 건너뜀(${dateStr}): 이미 게시됨`
+            : `밀린 게시 보류(${dateStr}): 게시 여부 확인 실패 — ${check.reason}${check.detail ? ` (${check.detail})` : ''}`
+        );
+        continue;
+      }
       const recordId = await runningRecords.findIdByUserAndRecordDate(userId, dateStr);
-      if (recordId == null) continue;
+      if (recordId == null) {
+        log.push(`밀린 게시 건너뜀(${dateStr}): 기록을 찾지 못함`);
+        continue;
+      }
       const pub = await publishExistingRecordToInstagram(userId, recordId);
       if (pub.ok) {
         await markIgPublished(userId, dateStr, pub.igMediaId ?? null);

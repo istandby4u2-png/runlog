@@ -41,6 +41,7 @@ function SettingsContent() {
   const searchParams = useSearchParams();
   const [connections, setConnections] = useState<Connections | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authRequired, setAuthRequired] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [publishRecordId, setPublishRecordId] = useState('');
@@ -50,13 +51,15 @@ function SettingsContent() {
   const success = searchParams.get('success');
   const error = searchParams.get('error');
 
-  useEffect(() => {
-    fetchConnections();
-  }, []);
-
-  async function fetchConnections() {
+  const fetchConnections = useCallback(async () => {
     try {
-      const res = await fetch('/api/settings/connections');
+      const res = await fetch('/api/settings/connections', { credentials: 'include' });
+      if (res.status === 401) {
+        setAuthRequired(true);
+        setConnections(null);
+        return;
+      }
+      setAuthRequired(false);
       if (res.ok) {
         setConnections(await res.json());
       }
@@ -65,7 +68,18 @@ function SettingsContent() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    void fetchConnections();
+  }, [fetchConnections]);
+
+  useEffect(() => {
+    if (!success) return;
+    void fetchConnections();
+    const retry = window.setTimeout(() => void fetchConnections(), 800);
+    return () => window.clearTimeout(retry);
+  }, [success, fetchConnections]);
 
   async function disconnectGooglePhotos() {
     if (!confirm('Google Photos 연결을 해제할까요? 이후 «연결»로 Picker API 권한을 다시 승인할 수 있습니다.')) {
@@ -196,6 +210,11 @@ function SettingsContent() {
             <>
               Strava 연결 후 토큰 갱신 확인에 실패했습니다. «재연결»을 다시 시도해 주세요.
             </>
+          ) : error === 'strava_session_mismatch' ? (
+            <>
+              로그인 계정과 Strava 연결 대상이 일치하지 않습니다. RunLog에 다시 로그인한 뒤 «재연결»을
+              시도해 주세요.
+            </>
           ) : error?.startsWith('strava_') ? (
             <>Strava 연결 중 오류: {error.replace(/^strava_/, '')}. «재연결»을 다시 시도해 주세요.</>
           ) : (
@@ -203,6 +222,26 @@ function SettingsContent() {
           )}
         </div>
       )}
+      {authRequired && (
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded flex items-center gap-2 text-amber-900 text-sm">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          로그인이 필요합니다.{' '}
+          <Link href="/login" className="underline font-medium">
+            로그인
+          </Link>
+          후 연결 상태를 확인해 주세요.
+        </div>
+      )}
+      {!loading &&
+        !authRequired &&
+        success === 'strava' &&
+        !connections?.strava?.connected && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded flex items-center gap-2 text-amber-900 text-sm">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            Strava 연결은 완료됐지만 상태를 불러오지 못했습니다. 페이지를 새로고침하거나 «재연결»을
+            시도해 주세요.
+          </div>
+        )}
 
       {/* Description */}
       <div className="mb-6 p-4 bg-gray-50 rounded border border-gray-200 text-sm text-gray-700 space-y-1">

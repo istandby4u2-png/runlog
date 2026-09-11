@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exchangeCodeForTokens } from '@/lib/strava-api';
 import { ensureStravaAccessToken } from '@/lib/strava-token';
+import { getUserIdFromRequest } from '@/lib/auth';
 import { userTokens } from '@/lib/db-supabase';
 
 export async function GET(request: NextRequest) {
@@ -25,6 +26,13 @@ export async function GET(request: NextRequest) {
   if (isNaN(userId)) {
     return NextResponse.redirect(
       new URL('/settings?error=strava_invalid_state', request.url)
+    );
+  }
+
+  const sessionUserId = getUserIdFromRequest();
+  if (sessionUserId != null && sessionUserId !== userId) {
+    return NextResponse.redirect(
+      new URL('/settings?error=strava_session_mismatch', request.url)
     );
   }
 

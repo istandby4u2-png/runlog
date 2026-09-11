@@ -19,6 +19,7 @@ export async function GET() {
     return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
   }
 
+  const stravaToken = await userTokens.findByProvider(userId, 'strava');
   const tokens = await userTokens.findAllByUser(userId);
 
   const connections: Record<string, ConnectionStatus> = {
@@ -27,16 +28,20 @@ export async function GET() {
     instagram: { connected: false },
   };
 
+  if (stravaToken?.refresh_token) {
+    const extra = stravaToken.extra_data as { athlete_name?: string } | null;
+    connections.strava = {
+      connected: true,
+      expiresAt: stravaToken.token_expires_at,
+      autoRefresh: true,
+      athleteName:
+        typeof extra?.athlete_name === 'string' ? extra.athlete_name : undefined,
+    };
+  }
+
   for (const t of tokens) {
     if (t.provider === 'strava') {
-      const extra = t.extra_data as { athlete_name?: string } | null;
-      connections.strava = {
-        connected: true,
-        expiresAt: t.token_expires_at,
-        autoRefresh: true,
-        athleteName:
-          typeof extra?.athlete_name === 'string' ? extra.athlete_name : undefined,
-      };
+      continue;
     } else if (t.provider === 'google_photos') {
       connections.google_photos = {
         connected: true,

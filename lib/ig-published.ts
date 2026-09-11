@@ -12,8 +12,12 @@ import { supabaseAdmin } from '@/lib/supabase';
 
 const BUCKET = 'runlog-data';
 
+function dirFor(userId: number): string {
+  return `ig-published/${userId}`;
+}
+
 function pathFor(userId: number, dateStr: string): string {
-  return `ig-published/${userId}/${dateStr}.json`;
+  return `${dirFor(userId)}/${dateStr}.json`;
 }
 
 /**
@@ -37,20 +41,27 @@ export async function checkIgPublished(
   if (!supabaseAdmin) {
     return { published: true, reason: 'no-admin' };
   }
+
+  // 존재 확인은 download()가 아니라 list()로 한다.
+  // download()는 «파일 없음»을 에러로 돌려주는데, 그 에러 본문이 비어 있는 경우가
+  // 있어(메시지가 "{}") not-found 문자열 매칭이 걸리지 않는다. 그러면 보수적 판정이
+  // «이미 게시함»으로 기울어 밀린 게시가 조용히 멈춘다(2026-09-08·09 실제 사례).
+  // list()는 없는 파일을 에러가 아니라 «빈 배열»로 돌려주므로 추측이 필요 없다.
   const { data, error } = await supabaseAdmin.storage
     .from(BUCKET)
-    .download(pathFor(userId, dateStr));
+    .list(dirFor(userId), { search: `${dateStr}.json`, limit: 100 });
+
   if (error) {
-    // 파일 없음(정상적인 «미게시») 외의 오류도 여기로 오지만,
-    // 잘못 게시하는 쪽보다 건너뛰는 쪽이 안전하므로 not-found만 false로 본다.
-    const msg = (error.message || '').toLowerCase();
-    const notFound =
-      msg.includes('not found') || msg.includes('nosuchkey') || msg.includes('404');
-    return notFound
-      ? { published: false, reason: 'none' }
-      : { published: true, reason: 'error', detail: error.message || String(error) };
+    // 진짜 조회 실패 — 잘못 게시하는 쪽보다 건너뛰는 쪽이 안전하다.
+    return {
+      published: true,
+      reason: 'error',
+      detail: error.message || JSON.stringify(error),
+    };
   }
-  return data
+
+  const found = (data || []).some((o) => o.name === `${dateStr}.json`);
+  return found
     ? { published: true, reason: 'marker' }
     : { published: false, reason: 'none' };
 }

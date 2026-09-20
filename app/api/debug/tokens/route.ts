@@ -6,6 +6,7 @@ import {
   refreshAccessToken,
   GOOGLE_RECONNECT_MESSAGE,
 } from '@/lib/google-photos-api';
+import { ensureStravaAccessToken } from '@/lib/strava-token';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,28 @@ export async function GET() {
   }
 
   const result: Record<string, unknown> = { userId };
+
+  // --- Strava token check ---
+  try {
+    const strava = await ensureStravaAccessToken(userId);
+    if (strava.ok) {
+      result.strava = {
+        connected: true,
+        refreshed: strava.refreshed,
+        athlete_name: strava.athleteName ?? null,
+      };
+    } else {
+      result.strava = {
+        connected: false,
+        reason: strava.reason,
+        message: strava.message,
+      };
+    }
+  } catch (err: unknown) {
+    result.strava = {
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 
   // --- Google Photos token check ---
   try {

@@ -27,6 +27,18 @@ export interface GarminActivitySummary {
   locationName: string;
 }
 
+/**
+ * 소모 칼로리는 «활동(active)» 기준으로 통일한다.
+ * Garmin의 calories는 총칼로리(기초대사분 포함)라 bmrCalories를 뺀다 —
+ * Apple 건강(HAE activeEnergy)·이미지 판독(활성 칼로리)과 기준을 맞추기 위함.
+ * bmrCalories는 응답에 있으나 라이브러리 타입에 없어 캐스팅해서 읽는다.
+ */
+function activeCalories(a: IActivity): number {
+  const total = a.calories || 0;
+  const bmr = (a as IActivity & { bmrCalories?: number }).bmrCalories || 0;
+  return Math.max(0, Math.round(total - bmr));
+}
+
 function toSummary(activity: IActivity): GarminActivitySummary {
   const distanceKm = (activity.distance || 0) / 1000;
   const durationMinutes = Math.round((activity.duration || 0) / 60);
@@ -41,7 +53,7 @@ function toSummary(activity: IActivity): GarminActivitySummary {
     startTimeLocal: activity.startTimeLocal,
     distanceKm: Math.round(distanceKm * 100) / 100,
     durationMinutes,
-    calories: activity.calories || 0,
+    calories: activeCalories(activity),
     averageHR: activity.averageHR || 0,
     maxHR: activity.maxHR || 0,
     elevationGain: activity.elevationGain || 0,
@@ -102,7 +114,7 @@ function toStravaSummary(a: IActivity): StravaActivitySummary {
     startTimeLocal: a.startTimeLocal,
     distanceKm: Math.round(distanceKm * 100) / 100,
     durationMinutes,
-    calories: Math.round(a.calories || 0),
+    calories: activeCalories(a),
     averageHR: Math.round(a.averageHR || 0),
     maxHR: Math.round(a.maxHR || 0),
     elevationGain: Math.round(a.elevationGain || 0),

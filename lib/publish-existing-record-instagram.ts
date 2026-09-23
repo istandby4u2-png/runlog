@@ -205,6 +205,17 @@ export async function publishExistingRecordToInstagram(
   // 게시가 끝난 카드는 스토리지에서 정리 (실패했으면 남겨 두고 정리 엔드포인트가 회수)
   if (igMediaId) await discardPublishedCard(cardUrl);
 
+  // 미디어 ID가 없으면 게시가 실패한 것이다. 여기서 ok로 돌려주면 크론 스윕이
+  // «게시함» 표식을 남겨 그 날짜를 영영 재시도하지 않는다 — 2026-09-21에
+  // IG 토큰이 무효화됐는데 표식만 남아 게시가 조용히 유실된 사고가 그것이다.
+  if (!igMediaId) {
+    return {
+      ok: false,
+      error: 'Instagram 게시 실패 — 미디어 ID를 받지 못했습니다(토큰 무효·권한 확인).',
+      log: [...log, ...pubLog],
+    };
+  }
+
   return {
     ok: true,
     igMediaId,

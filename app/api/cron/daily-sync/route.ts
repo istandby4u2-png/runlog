@@ -34,8 +34,12 @@ export const maxDuration = 300;
 const IG_SWEEP_START = '2026-08-08';
 /** 며칠 전까지 훑을지 */
 const IG_SWEEP_DAYS = 3;
-/** 한 번의 크론에서 밀린 게시 최대 건수 (IG 폴링 ~45s+ → 실행 제한 300s 안에 들어오도록) */
-const IG_SWEEP_MAX = 1;
+/**
+ * 한 번의 크론에서 밀린 게시 최대 건수.
+ * 컨테이너 폴링은 보통 5~10초, 최악 45초 — 밀린 2건 + 당일 1건이어도 300s 안에 든다.
+ * 넘치면 22:30 catch-up 크론이 나머지를 이어서 올린다(스윕은 «기록 있으면 skip»보다 앞에서 돈다).
+ */
+const IG_SWEEP_MAX = 2;
 
 function shiftDate(dateStr: string, days: number): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
